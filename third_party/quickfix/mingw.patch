@@ -1,0 +1,2457 @@
+QuickFIX MinGW-w64 patch for MiniOEMS
+=====================================
+Upstream: https://github.com/quickfix/quickfix  commit 386ce46e917ae494ab6e90b1be90fd421cdbe3f9
+Licence:  QuickFIX Software License, Version 1.0 (BSD-style). This patch modifies QuickFIX source.
+
+Why: QuickFIX detects Windows with _MSC_VER (Microsoft's compiler only). MinGW-w64 targets
+Windows with GCC, so it fell through to the POSIX branches (arpa/inet.h, poll.h, fcntl...)
+which do not exist on Windows. This patch routes MinGW through QuickFIX's existing Windows
+(Winsock / _beginthreadex) code paths:
+  - `#ifdef _MSC_VER`  -> `#if defined(_MSC_VER) || defined(__MINGW32__)`  (platform checks)
+  - `#ifndef _MSC_VER` -> `#if !defined(_MSC_VER) && !defined(__MINGW32__)`
+  - cmake/QuickfixPlatformSettings.cmake: also generate the Allocator.h stub on MinGW
+  - src/getopt.c (test runner only): MinGW has no __progname
+It has no effect on Linux/macOS (GCC/Clang there do not define __MINGW32__).
+Verified on Windows 11 + MSYS2 MinGW-w64 GCC 16.1: QuickFIX acceptance tests 467/467 passed.
+Apply with: git apply mingw.patch   (git ignores this header)
+
+diff --git a/cmake/QuickfixPlatformSettings.cmake b/cmake/QuickfixPlatformSettings.cmake
+index ac54cdd..09cbc5f 100644
+--- a/cmake/QuickfixPlatformSettings.cmake
++++ b/cmake/QuickfixPlatformSettings.cmake
+@@ -17,7 +17,7 @@ set( CMAKE_EXE_LINKER_FLAGS "-m64 -lrt" CACHE STRING "Executable link flags" FOR
+ set( CMAKE_SHARED_LINKER_FLAGS "-m64 -lrt" CACHE STRING "shared link flags" FORCE )
+ endif()
+ 
+-if(NOT WIN32)
++if(NOT WIN32 OR MINGW)
+ find_file (FOUND_ALLOCATOR_HDR NAMES Allocator.h PATHS ${PROJECT_SOURCE_DIR}/src/C++/ NO_DEFAULT_PATH)
+ if (NOT FOUND_ALLOCATOR_HDR)
+ message("-- Generating empty Allocator.h")
+diff --git a/src/C++/Acceptor.cpp b/src/C++/Acceptor.cpp
+index 39d4fc2..e02ce80 100644
+--- a/src/C++/Acceptor.cpp
++++ b/src/C++/Acceptor.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/Acceptor.h b/src/C++/Acceptor.h
+index dee7ac6..d035b6c 100644
+--- a/src/C++/Acceptor.h
++++ b/src/C++/Acceptor.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_ACCEPTOR_H
+ #define FIX_ACCEPTOR_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/DataDictionary.cpp b/src/C++/DataDictionary.cpp
+index 96713ac..7f2f319 100644
+--- a/src/C++/DataDictionary.cpp
++++ b/src/C++/DataDictionary.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+@@ -30,7 +30,7 @@
+ 
+ #include "PUGIXML_DOMDocument.h"
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #define RESET_AUTO_PTR(OLD, NEW) OLD = NEW;
+ #else
+ #define RESET_AUTO_PTR(OLD, NEW) OLD.reset(NEW.release());
+diff --git a/src/C++/DataDictionary.h b/src/C++/DataDictionary.h
+index 72d8beb..eed6714 100644
+--- a/src/C++/DataDictionary.h
++++ b/src/C++/DataDictionary.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_DATADICTIONARY_H
+ #define FIX_DATADICTIONARY_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/DataDictionaryProvider.cpp b/src/C++/DataDictionaryProvider.cpp
+index 01d9910..20cd6b0 100644
+--- a/src/C++/DataDictionaryProvider.cpp
++++ b/src/C++/DataDictionaryProvider.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/DataDictionaryProvider.h b/src/C++/DataDictionaryProvider.h
+index c9bdc5a..2a823d3 100644
+--- a/src/C++/DataDictionaryProvider.h
++++ b/src/C++/DataDictionaryProvider.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_DATADICTIONARYPROVIDER_H
+ #define FIX_DATADICTIONARYPROVIDER_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/Dictionary.cpp b/src/C++/Dictionary.cpp
+index 968befc..23e6cc2 100644
+--- a/src/C++/Dictionary.cpp
++++ b/src/C++/Dictionary.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/Dictionary.h b/src/C++/Dictionary.h
+index ae4cbb4..90e59fe 100644
+--- a/src/C++/Dictionary.h
++++ b/src/C++/Dictionary.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_DICTIONARY_H
+ #define FIX_DICTIONARY_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/Event.h b/src/C++/Event.h
+index 8ec80c9..24505e3 100644
+--- a/src/C++/Event.h
++++ b/src/C++/Event.h
+@@ -25,7 +25,7 @@
+ #include "Utility.h"
+ #include <math.h>
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(__MINGW32__)
+ #include <cmath>
+ #include <pthread.h>
+ #endif
+@@ -35,7 +35,7 @@ namespace FIX {
+ class Event {
+ public:
+   Event() {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+     m_event = CreateEvent(0, false, false, 0);
+ #else
+     pthread_mutex_init(&m_mutex, 0);
+@@ -44,7 +44,7 @@ public:
+   }
+ 
+   ~Event() {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+     CloseHandle(m_event);
+ #else
+     pthread_cond_destroy(&m_event);
+@@ -53,7 +53,7 @@ public:
+   }
+ 
+   void signal() {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+     SetEvent(m_event);
+ #else
+     pthread_mutex_lock(&m_mutex);
+@@ -63,7 +63,7 @@ public:
+   }
+ 
+   void wait(double s) {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+     WaitForSingleObject(m_event, (long)(s * 1000));
+ #else
+     pthread_mutex_lock(&m_mutex);
+@@ -77,7 +77,7 @@ public:
+   }
+ 
+ private:
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   HANDLE m_event;
+ #else
+   pthread_cond_t m_event;
+diff --git a/src/C++/Field.h b/src/C++/Field.h
+index 3f64b09..6b21b19 100644
+--- a/src/C++/Field.h
++++ b/src/C++/Field.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_FIELD
+ #define FIX_FIELD
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4786)
+ #endif
+ 
+diff --git a/src/C++/FieldConvertors.cpp b/src/C++/FieldConvertors.cpp
+index 3e0637a..67e10d9 100644
+--- a/src/C++/FieldConvertors.cpp
++++ b/src/C++/FieldConvertors.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/FieldMap.cpp b/src/C++/FieldMap.cpp
+index 0fd3bae..ffc159b 100644
+--- a/src/C++/FieldMap.cpp
++++ b/src/C++/FieldMap.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/FieldMap.h b/src/C++/FieldMap.h
+index 3d4de70..b2c1495 100644
+--- a/src/C++/FieldMap.h
++++ b/src/C++/FieldMap.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_FIELDMAP
+ #define FIX_FIELDMAP
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4786)
+ #endif
+ 
+diff --git a/src/C++/FieldTypes.cpp b/src/C++/FieldTypes.cpp
+index 7fe97c4..2da618b 100644
+--- a/src/C++/FieldTypes.cpp
++++ b/src/C++/FieldTypes.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/FieldTypes.h b/src/C++/FieldTypes.h
+index 5d56ede..0a7cdbd 100644
+--- a/src/C++/FieldTypes.h
++++ b/src/C++/FieldTypes.h
+@@ -23,7 +23,7 @@
+ #ifndef FIX_FIELDTYPES_H
+ #define FIX_FIELDTYPES_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/FileLog.cpp b/src/C++/FileLog.cpp
+index b222256..2ed218f 100644
+--- a/src/C++/FileLog.cpp
++++ b/src/C++/FileLog.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/FileLog.h b/src/C++/FileLog.h
+index 1452fa3..68e2a97 100644
+--- a/src/C++/FileLog.h
++++ b/src/C++/FileLog.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_FILELOG_H
+ #define FIX_FILELOG_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/FileStore.cpp b/src/C++/FileStore.cpp
+index d728bf7..5f50b05 100644
+--- a/src/C++/FileStore.cpp
++++ b/src/C++/FileStore.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+@@ -32,7 +32,7 @@
+ #include <inttypes.h>
+ #include <sys/stat.h>
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #define FILE_SEEK _fseeki64
+ #define FILE_TELL _ftelli64
+ #else
+diff --git a/src/C++/FileStore.h b/src/C++/FileStore.h
+index fb19703..37ec9e8 100644
+--- a/src/C++/FileStore.h
++++ b/src/C++/FileStore.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_FILESTORE_H
+ #define FIX_FILESTORE_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/FixFieldNumbers.h b/src/C++/FixFieldNumbers.h
+index 271677d..d9d2f7e 100644
+--- a/src/C++/FixFieldNumbers.h
++++ b/src/C++/FixFieldNumbers.h
+@@ -2,7 +2,7 @@
+ #define FIX_FIELD_NUMBERS_H
+ 
+ #ifdef ReplaceText
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma push_macro("ReplaceText")
+ #else
+ #pragma push("ReplaceText")
+@@ -6122,7 +6122,7 @@ const int SelfMatchPreventionInstruction = 2964;
+ } // namespace FIELD
+ 
+ #ifdef ReplaceText
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma pop_macro("ReplaceText")
+ #else
+ #pragma pop("ReplaceText")
+diff --git a/src/C++/FixFields.h b/src/C++/FixFields.h
+index 646444f..bb5c384 100644
+--- a/src/C++/FixFields.h
++++ b/src/C++/FixFields.h
+@@ -7,7 +7,7 @@
+ #undef Yield
+ 
+ #ifdef ReplaceText
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma push_macro("ReplaceText")
+ #else
+ #pragma push("ReplaceText")
+@@ -6123,7 +6123,7 @@ DEFINE_INT(SelfMatchPreventionInstruction);
+ } // namespace FIX
+ 
+ #ifdef ReplaceText
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma pop_macro("ReplaceText")
+ #else
+ #pragma pop("ReplaceText")
+diff --git a/src/C++/Group.cpp b/src/C++/Group.cpp
+index 8ecc21d..e3ad576 100644
+--- a/src/C++/Group.cpp
++++ b/src/C++/Group.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/Group.h b/src/C++/Group.h
+index e9d955e..b5ba91d 100644
+--- a/src/C++/Group.h
++++ b/src/C++/Group.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_GROUP
+ #define FIX_GROUP
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4786)
+ #endif
+ 
+diff --git a/src/C++/HtmlBuilder.h b/src/C++/HtmlBuilder.h
+index 045d45e..1039b2a 100644
+--- a/src/C++/HtmlBuilder.h
++++ b/src/C++/HtmlBuilder.h
+@@ -22,7 +22,7 @@
+ #ifndef HTML_BUILDER_H
+ #define HTML_BUILDER_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/HttpConnection.cpp b/src/C++/HttpConnection.cpp
+index 46e029b..97ac002 100644
+--- a/src/C++/HttpConnection.cpp
++++ b/src/C++/HttpConnection.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+@@ -35,7 +35,7 @@ using namespace HTML;
+ namespace FIX {
+ HttpConnection::HttpConnection(socket_handle s)
+     : m_socket(s) {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   FD_ZERO(&m_fds);
+   FD_SET(m_socket, &m_fds);
+ #endif
+@@ -52,7 +52,7 @@ void HttpConnection::disconnect(int error) {
+ }
+ 
+ bool HttpConnection::read() {
+-#if _MSC_VER
++#if (defined(_MSC_VER) || defined(__MINGW32__))
+   struct timeval timeout = {2, 0};
+   fd_set readset = m_fds;
+ #else
+@@ -61,7 +61,7 @@ bool HttpConnection::read() {
+ #endif
+ 
+   try {
+-#if _MSC_VER
++#if (defined(_MSC_VER) || defined(__MINGW32__))
+     // Wait for input (1 second timeout)
+     int result = select(0, &readset, 0, 0, &timeout);
+ #else
+diff --git a/src/C++/HttpConnection.h b/src/C++/HttpConnection.h
+index 094e146..f874c16 100644
+--- a/src/C++/HttpConnection.h
++++ b/src/C++/HttpConnection.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_HTTPCONNECTION_H
+ #define FIX_HTTPCONNECTION_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+@@ -65,7 +65,7 @@ private:
+   char m_buffer[BUFSIZ];
+ 
+   HttpParser m_parser;
+-#if _MSC_VER
++#if (defined(_MSC_VER) || defined(__MINGW32__))
+   fd_set m_fds;
+ #endif
+ };
+diff --git a/src/C++/HttpMessage.cpp b/src/C++/HttpMessage.cpp
+index e42d077..ff839d4 100644
+--- a/src/C++/HttpMessage.cpp
++++ b/src/C++/HttpMessage.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/HttpMessage.h b/src/C++/HttpMessage.h
+index abfa298..d4e14ac 100644
+--- a/src/C++/HttpMessage.h
++++ b/src/C++/HttpMessage.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_HTTPMESSAGE
+ #define FIX_HTTPMESSAGE
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4786)
+ #endif
+ 
+diff --git a/src/C++/HttpParser.cpp b/src/C++/HttpParser.cpp
+index 46c233e..13609ab 100644
+--- a/src/C++/HttpParser.cpp
++++ b/src/C++/HttpParser.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/HttpParser.h b/src/C++/HttpParser.h
+index 3b881c8..d7161b5 100644
+--- a/src/C++/HttpParser.h
++++ b/src/C++/HttpParser.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_HTTPPARSER_H
+ #define FIX_HTTPPARSER_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/HttpServer.cpp b/src/C++/HttpServer.cpp
+index 8f5856a..0fe511a 100644
+--- a/src/C++/HttpServer.cpp
++++ b/src/C++/HttpServer.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/HttpServer.h b/src/C++/HttpServer.h
+index 696f0bb..3150605 100644
+--- a/src/C++/HttpServer.h
++++ b/src/C++/HttpServer.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_HTTPSERVER_H
+ #define FIX_HTTPSERVER_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/Initiator.cpp b/src/C++/Initiator.cpp
+index 758fe18..8bf8169 100644
+--- a/src/C++/Initiator.cpp
++++ b/src/C++/Initiator.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/Initiator.h b/src/C++/Initiator.h
+index 0228f53..048527d 100644
+--- a/src/C++/Initiator.h
++++ b/src/C++/Initiator.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_INITIATOR_H
+ #define FIX_INITIATOR_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/Log.cpp b/src/C++/Log.cpp
+index 414f9e1..ec04e73 100644
+--- a/src/C++/Log.cpp
++++ b/src/C++/Log.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/Log.h b/src/C++/Log.h
+index eafc7af..8bcb180 100644
+--- a/src/C++/Log.h
++++ b/src/C++/Log.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_LOG_H
+ #define FIX_LOG_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/Message.cpp b/src/C++/Message.cpp
+index cfb8697..cb81283 100644
+--- a/src/C++/Message.cpp
++++ b/src/C++/Message.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/Message.h b/src/C++/Message.h
+index d880367..4b5576c 100644
+--- a/src/C++/Message.h
++++ b/src/C++/Message.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_MESSAGE
+ #define FIX_MESSAGE
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4786)
+ #endif
+ 
+diff --git a/src/C++/MessageSorters.cpp b/src/C++/MessageSorters.cpp
+index e5c010e..30ff769 100644
+--- a/src/C++/MessageSorters.cpp
++++ b/src/C++/MessageSorters.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/MessageSorters.h b/src/C++/MessageSorters.h
+index 242ddf9..2960202 100644
+--- a/src/C++/MessageSorters.h
++++ b/src/C++/MessageSorters.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_MESSAGESORTERS_H
+ #define FIX_MESSAGESORTERS_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/MessageStore.cpp b/src/C++/MessageStore.cpp
+index 6d06782..7d60073 100644
+--- a/src/C++/MessageStore.cpp
++++ b/src/C++/MessageStore.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/MessageStore.h b/src/C++/MessageStore.h
+index 41d9b56..1148683 100644
+--- a/src/C++/MessageStore.h
++++ b/src/C++/MessageStore.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_MESSAGESTORE_H
+ #define FIX_MESSAGESTORE_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/Mutex.h b/src/C++/Mutex.h
+index 5a6d2de..b59fd25 100644
+--- a/src/C++/Mutex.h
++++ b/src/C++/Mutex.h
+@@ -29,7 +29,7 @@ namespace FIX {
+ class Mutex {
+ public:
+   Mutex() {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+     InitializeCriticalSection(&m_mutex);
+ #else
+     m_count = 0;
+@@ -43,7 +43,7 @@ public:
+   }
+ 
+   ~Mutex() {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+     DeleteCriticalSection(&m_mutex);
+ #else
+     pthread_mutex_destroy(&m_mutex);
+@@ -51,7 +51,7 @@ public:
+   }
+ 
+   void lock() {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+     EnterCriticalSection(&m_mutex);
+ #else
+     if (m_count && m_threadID == pthread_self()) {
+@@ -65,7 +65,7 @@ public:
+   }
+ 
+   void unlock() {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+     LeaveCriticalSection(&m_mutex);
+ #else
+     if (m_count > 1) {
+@@ -79,7 +79,7 @@ public:
+   }
+ 
+ private:
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   CRITICAL_SECTION m_mutex;
+ #else
+   pthread_mutex_t m_mutex;
+diff --git a/src/C++/NullStore.cpp b/src/C++/NullStore.cpp
+index e5023a7..2822d5e 100644
+--- a/src/C++/NullStore.cpp
++++ b/src/C++/NullStore.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/NullStore.h b/src/C++/NullStore.h
+index 250f0ae..67a7c87 100644
+--- a/src/C++/NullStore.h
++++ b/src/C++/NullStore.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_NULLSTORE_H
+ #define FIX_NULLSTORE_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/PUGIXML_DOMDocument.cpp b/src/C++/PUGIXML_DOMDocument.cpp
+index 32effbd..e04c005 100644
+--- a/src/C++/PUGIXML_DOMDocument.cpp
++++ b/src/C++/PUGIXML_DOMDocument.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/Parser.cpp b/src/C++/Parser.cpp
+index f1f9b14..f1daeb4 100644
+--- a/src/C++/Parser.cpp
++++ b/src/C++/Parser.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/Parser.h b/src/C++/Parser.h
+index b433ef0..2875dbb 100644
+--- a/src/C++/Parser.h
++++ b/src/C++/Parser.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_PARSER_H
+ #define FIX_PARSER_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/Responder.h b/src/C++/Responder.h
+index 0f0c12b..57c8556 100644
+--- a/src/C++/Responder.h
++++ b/src/C++/Responder.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_RESPONDER_H
+ #define FIX_RESPONDER_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/Session.cpp b/src/C++/Session.cpp
+index 2f2491f..763066a 100644
+--- a/src/C++/Session.cpp
++++ b/src/C++/Session.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/Session.h b/src/C++/Session.h
+index 7c021ee..cad25ff 100644
+--- a/src/C++/Session.h
++++ b/src/C++/Session.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_SESSION_H
+ #define FIX_SESSION_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/SessionFactory.cpp b/src/C++/SessionFactory.cpp
+index cfa8e4c..1949b7b 100644
+--- a/src/C++/SessionFactory.cpp
++++ b/src/C++/SessionFactory.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/SessionFactory.h b/src/C++/SessionFactory.h
+index 8f97673..540da9f 100644
+--- a/src/C++/SessionFactory.h
++++ b/src/C++/SessionFactory.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_SESSIONFACTORY_H
+ #define FIX_SESSIONFACTORY_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/SessionSettings.cpp b/src/C++/SessionSettings.cpp
+index 27ad0a3..e50e23d 100644
+--- a/src/C++/SessionSettings.cpp
++++ b/src/C++/SessionSettings.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/SessionSettings.h b/src/C++/SessionSettings.h
+index aa105ca..141ccc2 100644
+--- a/src/C++/SessionSettings.h
++++ b/src/C++/SessionSettings.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_SESSIONSETTINGS_H
+ #define FIX_SESSIONSETTINGS_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/SessionState.h b/src/C++/SessionState.h
+index eaa6436..719c521 100644
+--- a/src/C++/SessionState.h
++++ b/src/C++/SessionState.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_SESSIONSTATE_H
+ #define FIX_SESSIONSTATE_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/Settings.cpp b/src/C++/Settings.cpp
+index db01e4a..9dbdc34 100644
+--- a/src/C++/Settings.cpp
++++ b/src/C++/Settings.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/Settings.h b/src/C++/Settings.h
+index 08f9ab7..5eebdde 100644
+--- a/src/C++/Settings.h
++++ b/src/C++/Settings.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_SETTINGS_H
+ #define FIX_SETTINGS_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/SocketAcceptor.cpp b/src/C++/SocketAcceptor.cpp
+index e36a1c7..5cbef7e 100644
+--- a/src/C++/SocketAcceptor.cpp
++++ b/src/C++/SocketAcceptor.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/SocketAcceptor.h b/src/C++/SocketAcceptor.h
+index e2e4fd4..5baf0ee 100644
+--- a/src/C++/SocketAcceptor.h
++++ b/src/C++/SocketAcceptor.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_SOCKETACCEPTOR_H
+ #define FIX_SOCKETACCEPTOR_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/SocketConnection.cpp b/src/C++/SocketConnection.cpp
+index ada0239..60de4da 100644
+--- a/src/C++/SocketConnection.cpp
++++ b/src/C++/SocketConnection.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+@@ -38,7 +38,7 @@ SocketConnection::SocketConnection(socket_handle s, Sessions sessions, SocketMon
+       m_sessions(sessions),
+       m_pSession(0),
+       m_pMonitor(pMonitor) {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   FD_ZERO(&m_fds);
+   FD_SET(m_socket, &m_fds);
+ #endif
+@@ -53,7 +53,7 @@ SocketConnection::SocketConnection(
+       m_sendLength(0),
+       m_pSession(i.getSession(sessionID, *this)),
+       m_pMonitor(pMonitor) {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   FD_ZERO(&m_fds);
+   FD_SET(m_socket, &m_fds);
+ #endif
+@@ -82,7 +82,7 @@ bool SocketConnection::processQueue() {
+     return true;
+   }
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   struct timeval timeout = {0, 0};
+   fd_set writeset = m_fds;
+   if (select(0, 0, &writeset, 0, &timeout) <= 0) {
+@@ -136,7 +136,7 @@ bool SocketConnection::read(SocketAcceptor &acceptor, SocketServer &server) {
+   std::string message;
+   try {
+     if (!m_pSession) {
+-#if _MSC_VER
++#if (defined(_MSC_VER) || defined(__MINGW32__))
+       struct timeval timeout = {1, 0};
+       fd_set readset = m_fds;
+ #else
+@@ -145,7 +145,7 @@ bool SocketConnection::read(SocketAcceptor &acceptor, SocketServer &server) {
+ #endif
+ 
+       while (!readMessage(message)) {
+-#if _MSC_VER
++#if (defined(_MSC_VER) || defined(__MINGW32__))
+         int result = select(0, &readset, 0, 0, &timeout);
+ #else
+         int result = poll(&pfd, 1, timeout);
+diff --git a/src/C++/SocketConnection.h b/src/C++/SocketConnection.h
+index bb31e07..faf4687 100644
+--- a/src/C++/SocketConnection.h
++++ b/src/C++/SocketConnection.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_SOCKETCONNECTION_H
+ #define FIX_SOCKETCONNECTION_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+@@ -93,7 +93,7 @@ private:
+   Session *m_pSession;
+   SocketMonitor *m_pMonitor;
+   Mutex m_mutex;
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   fd_set m_fds;
+ #endif
+ };
+diff --git a/src/C++/SocketConnector.cpp b/src/C++/SocketConnector.cpp
+index 5463250..be3c4f7 100644
+--- a/src/C++/SocketConnector.cpp
++++ b/src/C++/SocketConnector.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+@@ -25,7 +25,7 @@
+ 
+ #include "SocketConnector.h"
+ #include "Utility.h"
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(__MINGW32__)
+ #include <sys/ioctl.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+diff --git a/src/C++/SocketConnector.h b/src/C++/SocketConnector.h
+index aa70f98..c8b4f02 100644
+--- a/src/C++/SocketConnector.h
++++ b/src/C++/SocketConnector.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_SOCKETCONNECTOR_H
+ #define FIX_SOCKETCONNECTOR_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/SocketInitiator.cpp b/src/C++/SocketInitiator.cpp
+index 7fbae96..3812456 100644
+--- a/src/C++/SocketInitiator.cpp
++++ b/src/C++/SocketInitiator.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/SocketInitiator.h b/src/C++/SocketInitiator.h
+index 00e25eb..613cea8 100644
+--- a/src/C++/SocketInitiator.h
++++ b/src/C++/SocketInitiator.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_SOCKETINITIATOR_H
+ #define FIX_SOCKETINITIATOR_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/SocketMonitor.h b/src/C++/SocketMonitor.h
+index 8519f1f..99f12f4 100644
+--- a/src/C++/SocketMonitor.h
++++ b/src/C++/SocketMonitor.h
+@@ -19,7 +19,8 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++/* MinGW patch: MinGW targets Windows so use the WIN32 socket monitor */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "SocketMonitor_WIN32.h"
+ #else
+ #include "SocketMonitor_UNIX.h"
+diff --git a/src/C++/SocketMonitor_UNIX.cpp b/src/C++/SocketMonitor_UNIX.cpp
+index 47d738b..6448b30 100644
+--- a/src/C++/SocketMonitor_UNIX.cpp
++++ b/src/C++/SocketMonitor_UNIX.cpp
+@@ -17,7 +17,8 @@
+ **
+ ****************************************************************************/
+ 
+-#ifndef _MSC_VER
++/* MinGW patch: MinGW uses WIN32 socket monitor, not UNIX */
++#if !defined(_MSC_VER) && !defined(__MINGW32__)
+ 
+ #include "config.h"
+ 
+diff --git a/src/C++/SocketMonitor_UNIX.h b/src/C++/SocketMonitor_UNIX.h
+index c170485..9af811a 100644
+--- a/src/C++/SocketMonitor_UNIX.h
++++ b/src/C++/SocketMonitor_UNIX.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_SOCKETMONITOR_UNIX_H
+ #define FIX_SOCKETMONITOR_UNIX_H
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(__MINGW32__)
+ 
+ #include <arpa/inet.h>
+ #include <netinet/in.h>
+diff --git a/src/C++/SocketMonitor_WIN32.cpp b/src/C++/SocketMonitor_WIN32.cpp
+index 1f4d5f0..409f726 100644
+--- a/src/C++/SocketMonitor_WIN32.cpp
++++ b/src/C++/SocketMonitor_WIN32.cpp
+@@ -17,7 +17,8 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++/* MinGW patch: MinGW also uses Winsock so compile WIN32 monitor for it too */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ 
+ #include "stdafx.h"
+ 
+diff --git a/src/C++/SocketMonitor_WIN32.h b/src/C++/SocketMonitor_WIN32.h
+index fa69626..162136c 100644
+--- a/src/C++/SocketMonitor_WIN32.h
++++ b/src/C++/SocketMonitor_WIN32.h
+@@ -22,7 +22,8 @@
+ #ifndef FIX_SOCKETMONITOR_WIND32_H
+ #define FIX_SOCKETMONITOR_WIND32_H
+ 
+-#ifdef _MSC_VER
++/* MinGW patch: MinGW also targets Windows and uses Winsock */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ 
+ #include "Utility.h"
+ 
+@@ -95,6 +96,6 @@ public:
+ };
+ } // namespace FIX
+ 
+-#endif //_MSC_VER
++#endif /* _MSC_VER || __MINGW32__ */
+ 
+ #endif // FIX_SOCKETMONITOR_WIN32_H
+diff --git a/src/C++/SocketServer.cpp b/src/C++/SocketServer.cpp
+index 165849f..4275d8c 100644
+--- a/src/C++/SocketServer.cpp
++++ b/src/C++/SocketServer.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+@@ -26,7 +26,7 @@
+ #include "Exceptions.h"
+ #include "SocketServer.h"
+ #include "Utility.h"
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(__MINGW32__)
+ #include <sys/ioctl.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+diff --git a/src/C++/SocketServer.h b/src/C++/SocketServer.h
+index 98b843e..5d08b47 100644
+--- a/src/C++/SocketServer.h
++++ b/src/C++/SocketServer.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_SOCKETSERVER_H
+ #define FIX_SOCKETSERVER_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/ThreadedSocketAcceptor.cpp b/src/C++/ThreadedSocketAcceptor.cpp
+index 9ecc4e2..cb15ad5 100644
+--- a/src/C++/ThreadedSocketAcceptor.cpp
++++ b/src/C++/ThreadedSocketAcceptor.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/ThreadedSocketAcceptor.h b/src/C++/ThreadedSocketAcceptor.h
+index 9a243dd..71605d4 100644
+--- a/src/C++/ThreadedSocketAcceptor.h
++++ b/src/C++/ThreadedSocketAcceptor.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_THREADEDSOCKETACCEPTOR_H
+ #define FIX_THREADEDSOCKETACCEPTOR_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/ThreadedSocketConnection.cpp b/src/C++/ThreadedSocketConnection.cpp
+index 84f5ad2..a0dbeb2 100644
+--- a/src/C++/ThreadedSocketConnection.cpp
++++ b/src/C++/ThreadedSocketConnection.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+@@ -37,7 +37,7 @@ ThreadedSocketConnection::ThreadedSocketConnection(socket_handle s, Sessions ses
+       m_sessions(sessions),
+       m_pSession(0),
+       m_disconnect(false) {
+-#if _MSC_VER
++#if (defined(_MSC_VER) || defined(__MINGW32__))
+   FD_ZERO(&m_fds);
+   FD_SET(m_socket, &m_fds);
+ #endif
+@@ -59,7 +59,7 @@ ThreadedSocketConnection::ThreadedSocketConnection(
+       m_pLog(pLog),
+       m_pSession(Session::lookupSession(sessionID)),
+       m_disconnect(false) {
+-#if _MSC_VER
++#if (defined(_MSC_VER) || defined(__MINGW32__))
+   FD_ZERO(&m_fds);
+   FD_SET(m_socket, &m_fds);
+ #endif
+@@ -103,7 +103,7 @@ void ThreadedSocketConnection::disconnect() {
+ }
+ 
+ bool ThreadedSocketConnection::read() {
+-#if _MSC_VER
++#if (defined(_MSC_VER) || defined(__MINGW32__))
+   struct timeval timeout = {1, 0};
+   fd_set readset = m_fds;
+ #else
+@@ -113,7 +113,7 @@ bool ThreadedSocketConnection::read() {
+ 
+   try {
+     // Wait for input (1 second timeout)
+-#if _MSC_VER
++#if (defined(_MSC_VER) || defined(__MINGW32__))
+     int result = select(0, &readset, 0, 0, &timeout);
+ #else
+     int result = poll(&pfd, 1, timeout);
+diff --git a/src/C++/ThreadedSocketConnection.h b/src/C++/ThreadedSocketConnection.h
+index 23c20bc..d9b1abd 100644
+--- a/src/C++/ThreadedSocketConnection.h
++++ b/src/C++/ThreadedSocketConnection.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_THREADEDSOCKETCONNECTION_H
+ #define FIX_THREADEDSOCKETCONNECTION_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+@@ -80,7 +80,7 @@ private:
+   Sessions m_sessions;
+   Session *m_pSession;
+   bool m_disconnect;
+-#if _MSC_VER
++#if (defined(_MSC_VER) || defined(__MINGW32__))
+   fd_set m_fds;
+ #endif
+ };
+diff --git a/src/C++/ThreadedSocketInitiator.cpp b/src/C++/ThreadedSocketInitiator.cpp
+index d19cbc8..1f5c5eb 100644
+--- a/src/C++/ThreadedSocketInitiator.cpp
++++ b/src/C++/ThreadedSocketInitiator.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/ThreadedSocketInitiator.h b/src/C++/ThreadedSocketInitiator.h
+index d9e2fbe..36753a9 100644
+--- a/src/C++/ThreadedSocketInitiator.h
++++ b/src/C++/ThreadedSocketInitiator.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_THREADEDSOCKETINITIATOR_H
+ #define FIX_THREADEDSOCKETINITIATOR_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/TimeRange.cpp b/src/C++/TimeRange.cpp
+index 6b178c8..af62433 100644
+--- a/src/C++/TimeRange.cpp
++++ b/src/C++/TimeRange.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/TimeRange.h b/src/C++/TimeRange.h
+index a6a37e9..aaa0309 100644
+--- a/src/C++/TimeRange.h
++++ b/src/C++/TimeRange.h
+@@ -22,7 +22,7 @@
+ #ifndef FIX_TIMERANGE_H
+ #define FIX_TIMERANGE_H
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786 4290)
+ #endif
+ 
+diff --git a/src/C++/Utility.cpp b/src/C++/Utility.cpp
+index 07a4d6d..bdd7c9c 100644
+--- a/src/C++/Utility.cpp
++++ b/src/C++/Utility.cpp
+@@ -17,12 +17,18 @@
+ **
+ ****************************************************************************/
+ 
++/* MinGW patch: stdafx.h is MSVC precompiled-header only; config.h for others */
+ #ifdef _MSC_VER
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+ #endif
+ 
++/* MinGW patch: _fsopen needs share.h for _SH_DENYWR */
++#if defined(__MINGW32__)
++#include <share.h>
++#endif
++
+ #include "Utility.h"
+ 
+ #ifdef USING_STREAMS
+@@ -45,7 +51,8 @@ std::string error_strerror(decltype(errno) error_number) {
+ 
+ std::string error_strerror() { return error_strerror(errno); }
+ 
+-#ifdef _MSC_VER
++/* MinGW patch: both MSVC and MinGW use Winsock, so both need error_wsaerror */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ std::string error_wsaerror(int wsa_error_number) {
+   auto format = FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_IGNORE_INSERTS
+                 | FORMAT_MESSAGE_MAX_WIDTH_MASK;
+@@ -156,7 +163,8 @@ std::set<std::string> string_split(const std::string &value, const char delimite
+ }
+ 
+ void socket_init() {
+-#ifdef _MSC_VER
++/* MinGW patch: MinGW targets Windows so use WSAStartup like MSVC */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   WORD version = MAKEWORD(2, 2);
+   WSADATA data;
+   WSAStartup(version, &data);
+@@ -170,13 +178,13 @@ void socket_init() {
+ }
+ 
+ void socket_term() {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   WSACleanup();
+ #endif
+ }
+ 
+ std::string socket_error() {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   return error_wsaerror();
+ #else
+   return error_strerror();
+@@ -233,8 +241,9 @@ socket_handle socket_createConnector() { return ::socket(PF_INET, SOCK_STREAM, I
+ int socket_connect(socket_handle socket, const char *address, int port) {
+   const char *hostname = socket_hostname(address);
+   if (hostname == 0) {
+-#ifdef _MSC_VER
+-    // In a case of Windows + MSVC, select() does not fire a write event for
++/* MinGW patch: same select() behaviour as MSVC on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
++    // In a case of Windows, select() does not fire a write event for
+     // a bare socket (no connection ever attempted). Therefore the later
+     // logic, which is based on unconditional continuation with select(),
+     // leads to a deadlock (the select never gets back) for the connecting session.
+@@ -263,7 +272,8 @@ socket_handle socket_accept(socket_handle s) {
+ }
+ 
+ ssize_t socket_recv(socket_handle s, char *buf, size_t length) {
+-#ifdef _MSC_VER
++/* MinGW patch: Winsock recv() takes int length */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   return recv(s, buf, static_cast<int>(length), 0);
+ #else
+   return recv(s, buf, length, 0);
+@@ -271,7 +281,8 @@ ssize_t socket_recv(socket_handle s, char *buf, size_t length) {
+ }
+ 
+ ssize_t socket_send(socket_handle s, const char *msg, size_t length) {
+-#ifdef _MSC_VER
++/* MinGW patch: Winsock send() takes int length */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   return send(s, msg, static_cast<int>(length), 0);
+ #else
+   return send(s, msg, length, 0);
+@@ -280,7 +291,8 @@ ssize_t socket_send(socket_handle s, const char *msg, size_t length) {
+ 
+ void socket_close(socket_handle s) {
+   shutdown(s, 2);
+-#ifdef _MSC_VER
++/* MinGW patch: use closesocket() on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   closesocket(s);
+ #else
+   close(s);
+@@ -289,7 +301,8 @@ void socket_close(socket_handle s) {
+ 
+ std::string socket_get_last_error() {
+   std::stringstream errorMessage;
+-#ifdef _MSC_VER
++/* MinGW patch: use WSAGetLastError() on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   int winsockErrorCode = WSAGetLastError();
+ 
+   char *s = NULL;
+@@ -312,7 +325,8 @@ std::string socket_get_last_error() {
+ 
+ bool socket_fionread(socket_handle s, int &bytes) {
+   bytes = 0;
+-#if defined(_MSC_VER)
++/* MinGW patch: use ioctlsocket on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   return ::ioctlsocket(s, FIONREAD, &((unsigned long &)bytes)) == 0;
+ #elif defined(USING_STREAMS)
+   return ::ioctl(s, I_NREAD, &bytes) >= 0;
+@@ -327,7 +341,8 @@ bool socket_disconnected(socket_handle s) {
+ }
+ 
+ int socket_setsockopt(socket_handle s, int opt) {
+-#ifdef _MSC_VER
++/* MinGW patch: use BOOL on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   BOOL optval = TRUE;
+ #else
+   int optval = 1;
+@@ -341,7 +356,8 @@ int socket_setsockopt(socket_handle s, int opt, int optval) {
+     level = IPPROTO_TCP;
+   }
+ 
+-#ifdef _MSC_VER
++/* MinGW patch: Winsock setsockopt takes const char* */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   return ::setsockopt(s, level, opt, (char *)&optval, sizeof(optval));
+ #else
+   return ::setsockopt(s, level, opt, &optval, sizeof(optval));
+@@ -354,7 +370,8 @@ int socket_getsockopt(socket_handle s, int opt, int &optval) {
+     level = IPPROTO_TCP;
+   }
+ 
+-#ifdef _MSC_VER
++/* MinGW patch: Winsock getsockopt length is int, POSIX uses socklen_t */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   int length = sizeof(int);
+ #else
+   socklen_t length = sizeof(socklen_t);
+@@ -363,7 +380,8 @@ int socket_getsockopt(socket_handle s, int opt, int &optval) {
+   return ::getsockopt(s, level, opt, (char *)&optval, &length);
+ }
+ 
+-#ifndef _MSC_VER
++/* MinGW patch: fcntl is POSIX-only; Windows uses ioctlsocket */
++#if !defined(_MSC_VER) && !defined(__MINGW32__)
+ int socket_fcntl(int s, int opt, int arg) { return ::fcntl(s, opt, arg); }
+ 
+ int socket_getfcntlflag(int s, int arg) { return socket_fcntl(s, F_GETFL, arg); }
+@@ -372,22 +390,26 @@ int socket_setfcntlflag(int s, int arg) { return socket_fcntl(s, F_SETFL, arg);
+ #endif
+ 
+ void socket_setnonblock(socket_handle socket) {
+-#ifdef _MSC_VER
++/* MinGW patch: use ioctlsocket on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   u_long opt = 1;
+   ::ioctlsocket(socket, FIONBIO, &opt);
+ #else
+   socket_setfcntlflag(socket, O_NONBLOCK);
+ #endif
+ }
++
+ bool socket_isValid(socket_handle socket) {
+-#ifdef _MSC_VER
++/* MinGW patch: Windows SOCKET is unsigned; invalid value is INVALID_SOCKET */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   return socket != INVALID_SOCKET_HANDLE;
+ #else
+   return socket >= 0;
+ #endif
+ }
+ 
+-#ifndef _MSC_VER
++/* MinGW patch: socket_isBad uses fstat which is POSIX-only */
++#if !defined(_MSC_VER) && !defined(__MINGW32__)
+ bool socket_isBad(int s) {
+   struct stat buf;
+   fstat(s, &buf);
+@@ -464,7 +486,8 @@ const char *socket_peername(socket_handle socket) {
+ }
+ 
+ std::pair<socket_handle, socket_handle> socket_createpair() {
+-#ifdef _MSC_VER
++/* MinGW patch: no socketpair() on Windows; use loopback acceptor instead */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   socket_handle acceptor = socket_createAcceptor(0, true);
+   const char *host = socket_hostname(acceptor);
+   short port = socket_hostport(acceptor);
+@@ -481,7 +504,8 @@ std::pair<socket_handle, socket_handle> socket_createpair() {
+ }
+ 
+ tm time_gmtime(const time_t *t) {
+-#ifdef _MSC_VER
++/* MinGW patch: use gmtime_s on Windows (thread-safe), gmtime_r on POSIX */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   tm result;
+   gmtime_s(&result, t);
+   return result;
+@@ -492,7 +516,8 @@ tm time_gmtime(const time_t *t) {
+ }
+ 
+ tm time_localtime(const time_t *t) {
+-#ifdef _MSC_VER
++/* MinGW patch: use localtime_s on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   tm result;
+   localtime_s(&result, t);
+   return result;
+@@ -503,7 +528,8 @@ tm time_localtime(const time_t *t) {
+ }
+ 
+ bool thread_spawn(THREAD_START_ROUTINE func, void *var, thread_id &thread) {
+-#ifdef _MSC_VER
++/* MinGW patch: use _beginthreadex on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   thread_id result = 0;
+   unsigned int id = 0;
+   result = reinterpret_cast<thread_id>(_beginthreadex(NULL, 0, func, var, 0, &id));
+@@ -526,7 +552,8 @@ bool thread_spawn(THREAD_START_ROUTINE func, void *var) {
+ }
+ 
+ void thread_join(thread_id thread) {
+-#ifdef _MSC_VER
++/* MinGW patch: use WaitForSingleObject on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   WaitForSingleObject((void *)thread, INFINITE);
+   CloseHandle(thread);
+ #else
+@@ -535,7 +562,8 @@ void thread_join(thread_id thread) {
+ }
+ 
+ void thread_detach(thread_id thread) {
+-#ifdef _MSC_VER
++/* MinGW patch: use CloseHandle on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   CloseHandle(thread);
+ #else
+   pthread_t t = thread;
+@@ -544,7 +572,8 @@ void thread_detach(thread_id thread) {
+ }
+ 
+ thread_id thread_self() {
+-#ifdef _MSC_VER
++/* MinGW patch: use GetCurrentThread on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   return GetCurrentThread();
+ #else
+   return pthread_self();
+@@ -552,7 +581,8 @@ thread_id thread_self() {
+ }
+ 
+ void process_sleep(double s) {
+-#ifdef _MSC_VER
++/* MinGW patch: use Sleep() on Windows, nanosleep on POSIX */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   Sleep((long)(s * 1000));
+ #else
+   timespec time, remainder;
+@@ -566,7 +596,8 @@ void process_sleep(double s) {
+ }
+ 
+ std::string file_separator() {
+-#ifdef _MSC_VER
++/* MinGW patch: Windows uses backslash */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   return "\\";
+ #else
+   return "/";
+@@ -580,7 +611,8 @@ void file_mkdir(const char *path) {
+   for (const char *pos = path; (pos - path) <= length; ++pos) {
+     createPath += *pos;
+     if (*pos == '/' || *pos == '\\' || (pos - path) == length) {
+-#ifdef _MSC_VER
++/* MinGW patch: use _mkdir on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+       _mkdir(createPath.c_str());
+ #else
+       // use umask to override rwx for all
+@@ -591,7 +623,8 @@ void file_mkdir(const char *path) {
+ }
+ 
+ FILE *file_fopen(const char *path, const char *mode) {
+-#ifdef _MSC_VER
++/* MinGW patch: use _fsopen for shared-read access on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   return _fsopen(path, mode, _SH_DENYWR);
+ #else
+   return fopen(path, mode);
+@@ -611,7 +644,8 @@ bool file_exists(const char *path) {
+ }
+ 
+ void file_unlink(const char *path) {
+-#ifdef _MSC_VER
++/* MinGW patch: use _unlink on Windows */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   _unlink(path);
+ #else
+   unlink(path);
+diff --git a/src/C++/Utility.h b/src/C++/Utility.h
+index 4d0990f..16979ed 100644
+--- a/src/C++/Utility.h
++++ b/src/C++/Utility.h
+@@ -68,9 +68,15 @@
+ #define ALLOCATOR std::allocator
+ #endif
+ 
+-#ifdef _MSC_VER
++/* MinGW patch: route Windows targets (MSVC and MinGW) through Winsock2.
++   _WIN32 is defined for both MSVC and MinGW-w64; _MSC_VER is MSVC only. */
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ /////////////////////////////////////////////
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
+ #include <Winsock2.h>
++#include <Ws2tcpip.h>
+ #include <direct.h>
+ #include <process.h>
+ #include <time.h>
+@@ -114,7 +120,7 @@
+ #include <string>
+ 
+ namespace FIX {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ typedef int socklen_t;
+ typedef SSIZE_T ssize_t;
+ typedef SOCKET socket_handle;
+@@ -128,6 +134,10 @@ std::string error_strerror();
+ #ifdef _MSC_VER
+ std::string error_wsaerror(int wsa_error_number);
+ std::string error_wsaerror();
++#elif defined(__MINGW32__)
++/* MinGW: also expose wsaerror helper since we use Winsock2 */
++std::string error_wsaerror(int wsa_error_number);
++std::string error_wsaerror();
+ #endif
+ 
+ void string_replace(const std::string &oldValue, const std::string &newValue, std::string &value);
+@@ -158,14 +168,14 @@ bool socket_disconnected(socket_handle s);
+ int socket_setsockopt(socket_handle s, int opt);
+ int socket_setsockopt(socket_handle s, int opt, int optval);
+ int socket_getsockopt(socket_handle s, int opt, int &optval);
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(__MINGW32__)
+ int socket_fcntl(int s, int opt, int arg);
+ int socket_getfcntlflag(int s, int arg);
+ int socket_setfcntlflag(int s, int arg);
+ #endif
+ void socket_setnonblock(socket_handle s);
+ bool socket_isValid(socket_handle socket);
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(__MINGW32__)
+ bool socket_isBad(int s);
+ #endif
+ void socket_invalidate(socket_handle &socket);
+@@ -178,7 +188,7 @@ std::pair<socket_handle, socket_handle> socket_createpair();
+ tm time_gmtime(const time_t *t);
+ tm time_localtime(const time_t *t);
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ typedef _beginthreadex_proc_type THREAD_START_ROUTINE;
+ #define THREAD_PROC unsigned int _stdcall
+ #else
+@@ -188,7 +198,7 @@ typedef void *(THREAD_START_ROUTINE)(void *);
+ #define THREAD_PROC void *
+ #endif
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ typedef HANDLE thread_id;
+ #else
+ typedef pthread_t thread_id;
+diff --git a/src/C++/config.h b/src/C++/config.h
+index f17935d..0707152 100644
+--- a/src/C++/config.h
++++ b/src/C++/config.h
+@@ -3,6 +3,6 @@
+ 
+ /* #undef HAVE_MYSQL */
+ /* #undef HAVE_POSTGRESQL */
+-/* #undef HAVE_SSL */
++#define HAVE_SSL 1
+ 
+ #endif
+diff --git a/src/C++/pugixml.cpp b/src/C++/pugixml.cpp
+index e87fa85..8a095c9 100644
+--- a/src/C++/pugixml.cpp
++++ b/src/C++/pugixml.cpp
+@@ -45,7 +45,7 @@
+ #include <sys/stat.h>
+ #endif
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #	pragma warning(push)
+ #	pragma warning(disable: 4127) // conditional expression is constant
+ #	pragma warning(disable: 4324) // structure was padded due to __declspec(align())
+diff --git a/src/C++/stdint_msvc.h b/src/C++/stdint_msvc.h
+index 9effbf7..984f5b1 100644
+--- a/src/C++/stdint_msvc.h
++++ b/src/C++/stdint_msvc.h
+@@ -30,14 +30,14 @@
+ // 
+ ///////////////////////////////////////////////////////////////////////////////
+ 
+-#ifndef _MSC_VER // [
++#if !defined(_MSC_VER) && !defined(__MINGW32__) // [
+ #error "Use this header only with Microsoft Visual C++ compilers!"
+ #endif // _MSC_VER ]
+ 
+ #ifndef _MSC_STDINT_H_ // [
+ #define _MSC_STDINT_H_
+ 
+-#if _MSC_VER > 1000
++#if (defined(_MSC_VER) || defined(__MINGW32__)) > 1000
+ #pragma once
+ #endif
+ 
+diff --git a/src/C++/strptime.h b/src/C++/strptime.h
+index 92252ae..30aa32c 100644
+--- a/src/C++/strptime.h
++++ b/src/C++/strptime.h
+@@ -1,4 +1,4 @@
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ 
+ extern "C"
+   char *
+diff --git a/src/C++/test/DataDictionaryProviderTestCase.cpp b/src/C++/test/DataDictionaryProviderTestCase.cpp
+index 2202207..1754bf6 100644
+--- a/src/C++/test/DataDictionaryProviderTestCase.cpp
++++ b/src/C++/test/DataDictionaryProviderTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/DataDictionaryTestCase.cpp b/src/C++/test/DataDictionaryTestCase.cpp
+index e95295a..c4235cb 100644
+--- a/src/C++/test/DataDictionaryTestCase.cpp
++++ b/src/C++/test/DataDictionaryTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/DictionaryTestCase.cpp b/src/C++/test/DictionaryTestCase.cpp
+index d3c2dc9..f615921 100644
+--- a/src/C++/test/DictionaryTestCase.cpp
++++ b/src/C++/test/DictionaryTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/FieldBaseTestCase.cpp b/src/C++/test/FieldBaseTestCase.cpp
+index 62f8716..b9e75ef 100644
+--- a/src/C++/test/FieldBaseTestCase.cpp
++++ b/src/C++/test/FieldBaseTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/FieldConvertorsTestCase.cpp b/src/C++/test/FieldConvertorsTestCase.cpp
+index 353fd3d..938daeb 100644
+--- a/src/C++/test/FieldConvertorsTestCase.cpp
++++ b/src/C++/test/FieldConvertorsTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/FieldMapTestCase.cpp b/src/C++/test/FieldMapTestCase.cpp
+index 8348358..286540a 100644
+--- a/src/C++/test/FieldMapTestCase.cpp
++++ b/src/C++/test/FieldMapTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/FieldTypesTestCase.cpp b/src/C++/test/FieldTypesTestCase.cpp
+index 1e2c939..bd6c5c4 100644
+--- a/src/C++/test/FieldTypesTestCase.cpp
++++ b/src/C++/test/FieldTypesTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/FileLogTestCase.cpp b/src/C++/test/FileLogTestCase.cpp
+index 07e0036..a9ee0b6 100644
+--- a/src/C++/test/FileLogTestCase.cpp
++++ b/src/C++/test/FileLogTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/FileStoreFactoryTestCase.cpp b/src/C++/test/FileStoreFactoryTestCase.cpp
+index 4f10fd0..7881547 100644
+--- a/src/C++/test/FileStoreFactoryTestCase.cpp
++++ b/src/C++/test/FileStoreFactoryTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/FileStoreTestCase.cpp b/src/C++/test/FileStoreTestCase.cpp
+index 684d76c..6d70640 100644
+--- a/src/C++/test/FileStoreTestCase.cpp
++++ b/src/C++/test/FileStoreTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/FileUtilitiesTestCase.cpp b/src/C++/test/FileUtilitiesTestCase.cpp
+index dff5b2d..35b4af8 100644
+--- a/src/C++/test/FileUtilitiesTestCase.cpp
++++ b/src/C++/test/FileUtilitiesTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+@@ -32,7 +32,7 @@ using namespace FIX;
+ 
+ TEST_CASE("FileUtilitiesTests") {
+   SECTION("separator") {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+     CHECK("\\" == file_separator());
+ #else
+     CHECK("/" == file_separator());
+diff --git a/src/C++/test/GroupTestCase.cpp b/src/C++/test/GroupTestCase.cpp
+index e11ca11..21ddca2 100644
+--- a/src/C++/test/GroupTestCase.cpp
++++ b/src/C++/test/GroupTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/HostDetailsProviderTestCase.cpp b/src/C++/test/HostDetailsProviderTestCase.cpp
+index 91af78a..8d21231 100644
+--- a/src/C++/test/HostDetailsProviderTestCase.cpp
++++ b/src/C++/test/HostDetailsProviderTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/HttpMessageTestCase.cpp b/src/C++/test/HttpMessageTestCase.cpp
+index 671bb51..2547b6a 100644
+--- a/src/C++/test/HttpMessageTestCase.cpp
++++ b/src/C++/test/HttpMessageTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/HttpParserTestCase.cpp b/src/C++/test/HttpParserTestCase.cpp
+index f4bc6c3..bf9e814 100644
+--- a/src/C++/test/HttpParserTestCase.cpp
++++ b/src/C++/test/HttpParserTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/MemoryStoreTestCase.cpp b/src/C++/test/MemoryStoreTestCase.cpp
+index ae92954..4a08cc1 100644
+--- a/src/C++/test/MemoryStoreTestCase.cpp
++++ b/src/C++/test/MemoryStoreTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/MessageSortersTestCase.cpp b/src/C++/test/MessageSortersTestCase.cpp
+index 8730e25..875d438 100644
+--- a/src/C++/test/MessageSortersTestCase.cpp
++++ b/src/C++/test/MessageSortersTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/MessagesTestCase.cpp b/src/C++/test/MessagesTestCase.cpp
+index 4d93927..d1316c6 100644
+--- a/src/C++/test/MessagesTestCase.cpp
++++ b/src/C++/test/MessagesTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/MySQLStoreTestCase.cpp b/src/C++/test/MySQLStoreTestCase.cpp
+index b71aacc..c4c1b4f 100644
+--- a/src/C++/test/MySQLStoreTestCase.cpp
++++ b/src/C++/test/MySQLStoreTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/NullStoreTestCase.cpp b/src/C++/test/NullStoreTestCase.cpp
+index 6541d72..3958ce9 100644
+--- a/src/C++/test/NullStoreTestCase.cpp
++++ b/src/C++/test/NullStoreTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/OdbcStoreTestCase.cpp b/src/C++/test/OdbcStoreTestCase.cpp
+index 7140c4d..abb8489 100644
+--- a/src/C++/test/OdbcStoreTestCase.cpp
++++ b/src/C++/test/OdbcStoreTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/ParserTestCase.cpp b/src/C++/test/ParserTestCase.cpp
+index 4682424..4b2aac8 100644
+--- a/src/C++/test/ParserTestCase.cpp
++++ b/src/C++/test/ParserTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/PostgreSQLStoreTestCase.cpp b/src/C++/test/PostgreSQLStoreTestCase.cpp
+index 88e8858..a7cfa00 100644
+--- a/src/C++/test/PostgreSQLStoreTestCase.cpp
++++ b/src/C++/test/PostgreSQLStoreTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/SessionFactoryTestCase.cpp b/src/C++/test/SessionFactoryTestCase.cpp
+index 7732023..71d5223 100644
+--- a/src/C++/test/SessionFactoryTestCase.cpp
++++ b/src/C++/test/SessionFactoryTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/SessionIDTestCase.cpp b/src/C++/test/SessionIDTestCase.cpp
+index f0b5332..c135f23 100644
+--- a/src/C++/test/SessionIDTestCase.cpp
++++ b/src/C++/test/SessionIDTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/SessionSettingsTestCase.cpp b/src/C++/test/SessionSettingsTestCase.cpp
+index 6d3614a..df6f6c3 100644
+--- a/src/C++/test/SessionSettingsTestCase.cpp
++++ b/src/C++/test/SessionSettingsTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/SessionStateTestCase.cpp b/src/C++/test/SessionStateTestCase.cpp
+index 6c3787a..3548efa 100644
+--- a/src/C++/test/SessionStateTestCase.cpp
++++ b/src/C++/test/SessionStateTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/SessionTestCase.cpp b/src/C++/test/SessionTestCase.cpp
+index bc5ed69..51f679e 100644
+--- a/src/C++/test/SessionTestCase.cpp
++++ b/src/C++/test/SessionTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/SettingsTestCase.cpp b/src/C++/test/SettingsTestCase.cpp
+index 24774e6..82db4c8 100644
+--- a/src/C++/test/SettingsTestCase.cpp
++++ b/src/C++/test/SettingsTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/SharedArrayTestCase.cpp b/src/C++/test/SharedArrayTestCase.cpp
+index 1e30e64..70f2e17 100644
+--- a/src/C++/test/SharedArrayTestCase.cpp
++++ b/src/C++/test/SharedArrayTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/SocketAcceptorTestCase.cpp b/src/C++/test/SocketAcceptorTestCase.cpp
+index bf6cae7..600f0c6 100644
+--- a/src/C++/test/SocketAcceptorTestCase.cpp
++++ b/src/C++/test/SocketAcceptorTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/SocketConnectionTestCase.cpp b/src/C++/test/SocketConnectionTestCase.cpp
+index 3bf0a6a..58d68df 100644
+--- a/src/C++/test/SocketConnectionTestCase.cpp
++++ b/src/C++/test/SocketConnectionTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/SocketConnectorTestCase.cpp b/src/C++/test/SocketConnectorTestCase.cpp
+index a96f394..b6430fd 100644
+--- a/src/C++/test/SocketConnectorTestCase.cpp
++++ b/src/C++/test/SocketConnectorTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+@@ -27,7 +27,7 @@
+ #include "TestHelper.h"
+ #include <SocketConnector.h>
+ #include <SocketServer.h>
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include <stdlib.h>
+ #endif
+ 
+@@ -56,7 +56,7 @@ TEST_CASE("SocketConnectorTests") {
+     server.close();
+   }
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(__MINGW32__)
+   SECTION("connect_to_dead_port_fires_disconnect_once") {
+     // Bind a server to get a free port, then close it so nothing is listening.
+     SocketServer server(0);
+diff --git a/src/C++/test/SocketMonitorTestCase.cpp b/src/C++/test/SocketMonitorTestCase.cpp
+index 22e9e16..0163298 100644
+--- a/src/C++/test/SocketMonitorTestCase.cpp
++++ b/src/C++/test/SocketMonitorTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/SocketServerTestCase.cpp b/src/C++/test/SocketServerTestCase.cpp
+index 6ba415c..5cf93cc 100644
+--- a/src/C++/test/SocketServerTestCase.cpp
++++ b/src/C++/test/SocketServerTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+@@ -26,7 +26,7 @@
+ 
+ #include "TestHelper.h"
+ #include <SocketServer.h>
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include <stdlib.h>
+ #endif
+ 
+diff --git a/src/C++/test/StringUtilitiesTestCase.cpp b/src/C++/test/StringUtilitiesTestCase.cpp
+index b420def..b8f979d 100644
+--- a/src/C++/test/StringUtilitiesTestCase.cpp
++++ b/src/C++/test/StringUtilitiesTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/TestHelper.cpp b/src/C++/test/TestHelper.cpp
+index 668fa3f..4243b85 100644
+--- a/src/C++/test/TestHelper.cpp
++++ b/src/C++/test/TestHelper.cpp
+@@ -1,4 +1,4 @@
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #include "stdafx.h"
+ #else
+ #include "config.h"
+diff --git a/src/C++/test/TimeRangeTestCase.cpp b/src/C++/test/TimeRangeTestCase.cpp
+index 6215087..b58906c 100644
+--- a/src/C++/test/TimeRangeTestCase.cpp
++++ b/src/C++/test/TimeRangeTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/UtcTimeOnlyTestCase.cpp b/src/C++/test/UtcTimeOnlyTestCase.cpp
+index 5e296a5..89e75ad 100644
+--- a/src/C++/test/UtcTimeOnlyTestCase.cpp
++++ b/src/C++/test/UtcTimeOnlyTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/UtcTimeStampTestCase.cpp b/src/C++/test/UtcTimeStampTestCase.cpp
+index 44a888b..86efff3 100644
+--- a/src/C++/test/UtcTimeStampTestCase.cpp
++++ b/src/C++/test/UtcTimeStampTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/UtilitySSLTestCase.cpp b/src/C++/test/UtilitySSLTestCase.cpp
+index a974dcd..81b2fe2 100644
+--- a/src/C++/test/UtilitySSLTestCase.cpp
++++ b/src/C++/test/UtilitySSLTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/C++/test/UtilityTestCase.cpp b/src/C++/test/UtilityTestCase.cpp
+index dca68c1..7201c9f 100644
+--- a/src/C++/test/UtilityTestCase.cpp
++++ b/src/C++/test/UtilityTestCase.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+@@ -45,7 +45,7 @@ TEST_CASE("UtilityTests") {
+     CHECK(expected == FIX::error_strerror());
+   }
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+   SECTION("error_wsaerror") {
+     std::string expected = "(wsaerror[10048]:Only one usage of each socket address (protocol/network address/port) "
+                            "is normally permitted. )";
+@@ -119,7 +119,7 @@ TEST_CASE("UtilityTests") {
+     CHECK(-1 == actual);
+   }
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(__MINGW32__)
+   SECTION("socketIsBad_SocketDoesNotExist_True") {
+     int socket = 5000;
+     CHECK(socket_isBad(socket));
+@@ -141,7 +141,7 @@ TEST_CASE("UtilityTests") {
+     CHECK(-1 == actual);
+   }
+ 
+-#ifndef _MSC_VER
++#if !defined(_MSC_VER) && !defined(__MINGW32__)
+   SECTION("socketIsBad_SocketDoesNotExist_True") {
+     socket_handle socket = 5000;
+     CHECK(socket_isBad(socket));
+diff --git a/src/C++/test/catch_amalgamated.cpp b/src/C++/test/catch_amalgamated.cpp
+index eba3f00..fe39d2e 100644
+--- a/src/C++/test/catch_amalgamated.cpp
++++ b/src/C++/test/catch_amalgamated.cpp
+@@ -9127,7 +9127,7 @@ namespace Catch {
+ 
+         // Save previous errno, to prevent sprintf from overwriting it
+         ErrnoGuard guard;
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+         size_t printedLength = static_cast<size_t>(
+             sprintf_s( buffer, "%.3f", duration ) );
+ #else
+diff --git a/src/C++/test/ut.cpp b/src/C++/test/ut.cpp
+index 24bab46..97ac6d2 100644
+--- a/src/C++/test/ut.cpp
++++ b/src/C++/test/ut.cpp
+@@ -17,7 +17,7 @@
+ **
+ ****************************************************************************/
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) || defined(__MINGW32__)
+ #pragma warning(disable : 4503 4355 4786)
+ #include "stdafx.h"
+ #else
+diff --git a/src/getopt.c b/src/getopt.c
+index bf03f47..2d7edaa 100644
+--- a/src/getopt.c
++++ b/src/getopt.c
+@@ -62,7 +62,12 @@ getopt(int nargc, char * const *nargv, char * ostr)
+ 	char * const *nargv;
+   const char *ostr;*/
+ {
++	/* MinGW patch: __progname doesn't exist on Windows; use argv[0] instead */
++#if defined(_WIN32) && !defined(__progname)
++	static const char *__progname = "quickfix";
++#else
+ 	extern char *__progname;
++#endif
+ 	static char *place = EMSG;		/* option letter processing */
+ 	char *oli;				/* option letter list index */
+ 

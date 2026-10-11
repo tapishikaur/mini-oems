@@ -1,0 +1,7 @@
+# Normalise text files, but keep files whose exact bytes matter.
+* text=auto
+*.sh    text eol=lf
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+# The QuickFIX patch must apply byte-for-byte (some upstream files contain CRLF).
+*.patch -text

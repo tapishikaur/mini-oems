@@ -113,9 +113,22 @@ Numbers will be reported with hardware, OS and method. A missed target stays in 
 
 ## Building
 
-*Planned.* Build scripts and instructions will arrive with the first code milestone. The targets are Windows (MSYS2 MinGW-w64 GCC) and Linux (GCC).
+You need Git, bash, CMake 3.20 or newer, Ninja, and a C++20 compiler.
 
-QuickFIX doesn't officially support MinGW. This project builds it from a pinned commit with a patch that makes MinGW use QuickFIX's existing Windows (Winsock) code paths.
+- **Linux:** `sudo apt install build-essential cmake ninja-build git`
+- **Windows:** MSYS2 with the MinGW-w64 toolchain (`pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-ninja`). Run the script from Git Bash or an MSYS2 shell.
+
+```bash
+bash scripts/build.sh            # Release build; Debug: bash scripts/build.sh Debug
+```
+
+This single command does three things:
+
+1. Builds QuickFIX from its pinned commit, the first time only (a few minutes).
+2. Builds MiniOEMS.
+3. Runs the tests.
+
+QuickFIX doesn't officially support MinGW. `scripts/build_quickfix.sh` applies [`third_party/quickfix/mingw.patch`](third_party/quickfix/), which makes MinGW use QuickFIX's existing Windows (Winsock) code paths. The patch has no effect on Linux. On Windows, QuickFIX's own acceptance test suite passes in full with the patch applied.
 
 ## Limitations
 
