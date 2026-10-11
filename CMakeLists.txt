@@ -32,6 +32,15 @@ find_package(quickfix CONFIG REQUIRED
   PATHS "${MINI_OEMS_QUICKFIX_PREFIX}/share/cmake/quickfix" "${MINI_OEMS_QUICKFIX_PREFIX}"
   NO_DEFAULT_PATH)
 
+# The core: order types, lifecycle, risk and matching. Plain C++ with no FIX
+# dependency, so all of it can be tested without sockets or sessions.
+add_library(oems_core
+  src/types.cpp
+  src/order.cpp
+)
+target_include_directories(oems_core PUBLIC include)
+target_link_libraries(oems_core PRIVATE oems_options)
+
 if(MINI_OEMS_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)

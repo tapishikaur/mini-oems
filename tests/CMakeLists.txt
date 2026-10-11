@@ -9,9 +9,11 @@ FetchContent_MakeAvailable(googletest)
 include(GoogleTest)
 
 add_executable(oems_tests
+  order_test.cpp
   quickfix_smoke_test.cpp
+  types_test.cpp
 )
-target_link_libraries(oems_tests PRIVATE oems_options quickfix GTest::gtest_main)
+target_link_libraries(oems_tests PRIVATE oems_core oems_options quickfix GTest::gtest_main)
 
 # PRE_TEST: list the tests when ctest runs, not at build time.
 gtest_discover_tests(oems_tests DISCOVERY_MODE PRE_TEST)
