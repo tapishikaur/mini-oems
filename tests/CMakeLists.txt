@@ -10,14 +10,20 @@ FetchContent_MakeAvailable(googletest)
 include(GoogleTest)
 
 add_executable(oems_tests
+  config_test.cpp
+  fix_gateway_test.cpp
   in_process_venue_test.cpp
   order_book_test.cpp
+  order_manager_test.cpp
   order_test.cpp
   quickfix_smoke_test.cpp
   risk_test.cpp
   types_test.cpp
 )
-target_link_libraries(oems_tests PRIVATE oems_core oems_options quickfix GTest::gtest_main)
+target_link_libraries(oems_tests PRIVATE oems_gateway oems_options GTest::gtest_main)
+target_compile_definitions(oems_tests PRIVATE
+  MINI_OEMS_FIX44_XML="${MINI_OEMS_FIX44_XML}"
+  MINI_OEMS_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 # PRE_TEST: list the tests when ctest runs, not at build time.
 gtest_discover_tests(oems_tests DISCOVERY_MODE PRE_TEST)

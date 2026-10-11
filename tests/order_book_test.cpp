@@ -1,4 +1,5 @@
 #include "oems/order_book.hpp"
+#include "printers.hpp"
 
 #include <gtest/gtest.h>
 
@@ -10,10 +11,6 @@
 #include <vector>
 
 namespace oems {
-
-void PrintTo(const Execution& e, std::ostream* os) {
-  *os << "{resting=" << e.restingId << " " << e.qty << " @ " << formatPrice(e.price) << '}';
-}
 
 namespace {
 

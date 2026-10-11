@@ -1,0 +1,4 @@
+# account, max order notional, max position per symbol, max gross exposure
+# Notionals are in whole currency units.
+ACC1, 2000000, 100000, 50000000
+ACC2, 500000, 5000, 5000000

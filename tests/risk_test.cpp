@@ -1,4 +1,5 @@
 #include "oems/risk.hpp"
+#include "printers.hpp"
 
 #include <gtest/gtest.h>
 
@@ -12,8 +13,6 @@
 #include <vector>
 
 namespace oems {
-
-void PrintTo(RiskReject reject, std::ostream* os) { *os << toString(reject); }
 
 namespace {
 

@@ -36,14 +36,26 @@ find_package(quickfix CONFIG REQUIRED
 # The core: order types, lifecycle, risk and matching. Plain C++ with no FIX
 # dependency, so all of it can be tested without sockets or sessions.
 add_library(oems_core
+  src/config.cpp
   src/in_process_venue.cpp
   src/order.cpp
   src/order_book.cpp
+  src/order_manager.cpp
   src/risk.cpp
   src/types.cpp
 )
 target_include_directories(oems_core PUBLIC include)
 target_link_libraries(oems_core PRIVATE oems_options)
+
+# The FIX edge: the only code that touches QuickFIX.
+set(MINI_OEMS_FIX44_XML "${MINI_OEMS_QUICKFIX_PREFIX}/share/quickfix/FIX44.xml")
+add_library(oems_gateway src/fix_gateway.cpp)
+target_link_libraries(oems_gateway PUBLIC oems_core quickfix PRIVATE oems_options)
+
+# The gateway executable.
+add_executable(mini_oems src/main.cpp)
+target_link_libraries(mini_oems PRIVATE oems_gateway oems_options)
+target_compile_definitions(mini_oems PRIVATE MINI_OEMS_FIX44_XML="${MINI_OEMS_FIX44_XML}")
 
 if(MINI_OEMS_BUILD_TESTS)
   enable_testing()

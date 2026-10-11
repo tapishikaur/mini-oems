@@ -11,6 +11,8 @@ which do not exist on Windows. This patch routes MinGW through QuickFIX's existi
   - `#ifndef _MSC_VER` -> `#if !defined(_MSC_VER) && !defined(__MINGW32__)`
   - cmake/QuickfixPlatformSettings.cmake: also generate the Allocator.h stub on MinGW
   - src/getopt.c (test runner only): MinGW has no __progname
+  - THREAD_PROC uses __stdcall (not _stdcall), which MinGW also accepts in strict -std=c++20 mode
+(src/C++/config.h is left alone: QuickFIX regenerates it from cmake_config.h.in on every configure.)
 It has no effect on Linux/macOS (GCC/Clang there do not define __MINGW32__).
 Verified on Windows 11 + MSYS2 MinGW-w64 GCC 16.1: QuickFIX acceptance tests 467/467 passed.
 Apply with: git apply mingw.patch   (git ignores this header)
@@ -1675,7 +1677,7 @@ index 07a4d6d..bdd7c9c 100644
  #else
    unlink(path);
 diff --git a/src/C++/Utility.h b/src/C++/Utility.h
-index 4d0990f..16979ed 100644
+index 4d0990f..02548e0 100644
 --- a/src/C++/Utility.h
 +++ b/src/C++/Utility.h
 @@ -68,9 +68,15 @@
@@ -1732,15 +1734,18 @@ index 4d0990f..16979ed 100644
  bool socket_isBad(int s);
  #endif
  void socket_invalidate(socket_handle &socket);
-@@ -178,7 +188,7 @@ std::pair<socket_handle, socket_handle> socket_createpair();
+@@ -178,9 +188,9 @@ std::pair<socket_handle, socket_handle> socket_createpair();
  tm time_gmtime(const time_t *t);
  tm time_localtime(const time_t *t);
  
 -#ifdef _MSC_VER
 +#if defined(_MSC_VER) || defined(__MINGW32__)
  typedef _beginthreadex_proc_type THREAD_START_ROUTINE;
- #define THREAD_PROC unsigned int _stdcall
+-#define THREAD_PROC unsigned int _stdcall
++#define THREAD_PROC unsigned int __stdcall /* MinGW patch: __stdcall also works in strict ISO mode */
  #else
+ extern "C" {
+ typedef void *(THREAD_START_ROUTINE)(void *);
 @@ -188,7 +198,7 @@ typedef void *(THREAD_START_ROUTINE)(void *);
  #define THREAD_PROC void *
  #endif
@@ -1750,18 +1755,6 @@ index 4d0990f..16979ed 100644
  typedef HANDLE thread_id;
  #else
  typedef pthread_t thread_id;
-diff --git a/src/C++/config.h b/src/C++/config.h
-index f17935d..0707152 100644
---- a/src/C++/config.h
-+++ b/src/C++/config.h
-@@ -3,6 +3,6 @@
- 
- /* #undef HAVE_MYSQL */
- /* #undef HAVE_POSTGRESQL */
--/* #undef HAVE_SSL */
-+#define HAVE_SSL 1
- 
- #endif
 diff --git a/src/C++/pugixml.cpp b/src/C++/pugixml.cpp
 index e87fa85..8a095c9 100644
 --- a/src/C++/pugixml.cpp

@@ -83,7 +83,21 @@ Limits and exposures sit in flat arrays indexed by small integer IDs, so a check
 | ExecutionReport (new, partial fill, fill, canceled, replaced, rejected) | `8` | out |
 | OrderCancelReject | `9` | out |
 
-These edge cases are covered by tests (*planned*): duplicate `ClOrdID`, cancel before acknowledgement, cancels for unknown orders, out-of-sequence messages, and `PossDupFlag`/`PossResend` resends.
+Any other message type gets a BusinessMessageReject (`35=j`). Prices and quantities are read from the raw FIX text and parsed exactly, so no value ever passes through a `double`. A price with more than 4 decimal places is rejected, not rounded.
+
+### Duplicates, resends and gaps
+
+| Situation | What happens |
+|---|---|
+| A `ClOrdID` is reused | Rejected: `OrdRejReason=6` for a new order, `CxlRejReason=6` for a cancel/replace. No second order is created. ClOrdIDs are unique per FIX session. |
+| A `NewOrderSingle` arrives again with `PossResend=Y` or `PossDupFlag=Y`, and we already have it | A status report (`ExecType=I`) with the order's current state. Nothing changes. |
+| The same flag, but we've never seen that `ClOrdID` | Processed as a new order, because the original was lost. |
+| A copy with `PossDupFlag=Y` and a sequence number we've already processed | Dropped by QuickFIX's session layer; the application never sees it. |
+| A message arrives out of sequence (a gap) | QuickFIX holds it, asks the client to resend the missing range (`35=2`), processes the resent messages in order, then the held one, exactly once. |
+| A cancel or replace arrives before the client saw the order's acknowledgement | Requests are handled in arrival order, so the order is already accepted and the cancel finds it. |
+| A cancel names an unknown order, or one that's already done | `OrderCancelReject` with `CxlRejReason=1` (unknown) or `0` (too late). |
+
+All of these are tested over a real localhost FIX connection, with QuickFIX on both ends (`tests/fix_gateway_test.cpp`).
 
 ## Results
 
@@ -91,7 +105,7 @@ These edge cases are covered by tests (*planned*): duplicate `ClOrdID`, cancel b
 |---|---|---|---|
 | Risk-check latency | ~1 µs per order | **7.4 ns** median (passes every check); 1.5 ns when rejected by the first check; 14.1 ns including exposure updates for an accepted, filled order | `bench/risk_benchmark` (Google Benchmark, 10 repetitions, median), over 4,096 varied orders across 500 symbols and 50 accounts. Intel Core Ultra 7 165U laptop, Windows 11, GCC 16.1, Release build. |
 | End-to-end throughput (local FIX sessions) | 20,000 orders/s | not yet measured | |
-| Test cases | 120 | not yet final (181 so far) | |
+| Test cases | 120 | not yet final (227 so far) | |
 
 All numbers come with hardware, OS and method. A missed target stays in the table with an explanation.
 
@@ -107,7 +121,7 @@ The risk number is the check measured on its own, in a tight loop with warm cach
 | Build | CMake |
 | Tests | GoogleTest |
 | Microbenchmarks | Google Benchmark |
-| CI | GitHub Actions on Ubuntu (*planned*) |
+| CI | GitHub Actions on Ubuntu, Release and Debug builds (configured; runs once the repository is on GitHub) |
 
 ## Why these choices
 
@@ -115,6 +129,8 @@ The risk number is the check measured on its own, in a tight loop with warm cach
 - **Fixed-point prices.** Prices are stored as integers (for example, 10.25 becomes 102500). Floating-point rounding has no place in money calculations.
 - **Explicit transition table.** Illegal order states can't occur by accident, and every transition is testable.
 - **Single-threaded core.** No locks, deterministic behaviour, and easy replay of any scenario.
+- **FIX only at the edge.** The order manager, risk engine, order book and state machine don't know FIX exists. `FixGateway` is the only code that touches QuickFIX, so the core is tested without sockets, and swapping the protocol wouldn't touch it.
+- **Every new ClOrdID gets an order, even one about to be rejected.** The client always gets an OrderID back, and a rejected ClOrdID can't be quietly reused.
 - **Testing against simple reference models.** The order book is checked against a flat-list book that's slow but obviously correct, over 200,000 random operations. The risk engine's incrementally updated exposure is checked against a full recount, over 100,000 random operations. The state machine gets 250,000 random events. Seeds are fixed, so every run is identical. To prove the tests can fail, deliberate bugs were planted in each component, and every one was caught by at least two tests.
 
 ## Building
@@ -138,12 +154,28 @@ Build output goes to `build/`. On Windows, if the repository sits inside a OneDr
 
 QuickFIX doesn't officially support MinGW. `scripts/build_quickfix.sh` applies [`third_party/quickfix/mingw.patch`](third_party/quickfix/), which makes MinGW use QuickFIX's existing Windows (Winsock) code paths. The patch has no effect on Linux. On Windows, QuickFIX's own acceptance test suite passes in full with the patch applied.
 
+## Running the gateway
+
+```bash
+mini_oems config/acceptor.cfg config/instruments.csv config/accounts.csv
+```
+
+The executable is in the build output folder.
+- **`config/acceptor.cfg`** is a QuickFIX settings file. It listens on port 9878 for FIX 4.4 sessions `CLIENT1` and `CLIENT2`.
+- **`config/instruments.csv`** sets each symbol's tick size, reference price, price band, maximum order size and whether it's tradable.
+- **`config/accounts.csv`** sets each account's maximum order notional, maximum position per symbol and maximum gross exposure.
+
+A malformed line in either CSV stops startup with the line number. A typo is never silently read as zero.
+
 ## Limitations
 
 - Limit orders only (Day and IOC time-in-force).
 - Reference prices come from a config file, not a live market-data feed.
 - Order state is held in memory. QuickFIX persists session messages, but order state isn't recovered after a restart.
 - A single venue: an in-process order book with no smart order routing.
+- No self-trade prevention: two orders from the same account can trade with each other.
+- No pending-state reports. Cancels and replaces complete within the request, so clients get the final Canceled/Replaced report, never PendingCancel or PendingReplace.
+- The sample session config resets sequence numbers on every logon (`ResetOnLogon=Y`), which keeps demos simple. A production setup keeps them for the whole trading day.
 
 ## License
 

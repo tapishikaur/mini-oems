@@ -1,4 +1,5 @@
 #include "oems/order.hpp"
+#include "printers.hpp"
 
 #include <gtest/gtest.h>
 
@@ -12,14 +13,6 @@
 #include <utility>
 
 namespace oems {
-
-// Readable failure messages (in namespace oems so GoogleTest finds them).
-void PrintTo(OrdState state, std::ostream* os) { *os << toString(state); }
-void PrintTo(ApplyResult result, std::ostream* os) { *os << toString(result); }
-void PrintTo(const Order& o, std::ostream* os) {
-  *os << '{' << toString(o.state()) << " qty=" << o.orderQty() << " cum=" << o.cumQty()
-      << " px=" << formatPrice(o.price()) << '}';
-}
 
 namespace {
 

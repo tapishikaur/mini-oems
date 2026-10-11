@@ -1,0 +1,7 @@
+# symbol, tick size, reference price, price band (bps), max order qty, tradable (Y/N)
+# Reference prices are illustrative, not market data.
+AAPL, 0.01, 150.00, 500, 10000, Y
+MSFT, 0.01, 400.00, 500, 10000, Y
+NVDA, 0.01, 120.00, 800, 20000, Y
+TSLA, 0.01, 250.00, 1000, 10000, Y
+HALT, 0.01, 50.00, 500, 10000, N
