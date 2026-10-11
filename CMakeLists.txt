@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25) # 3.25: FetchContent SYSTEM
 project(mini_oems
   VERSION 0.1.0
   DESCRIPTION "FIX 4.4 order gateway with pre-trade risk checks"
@@ -12,6 +12,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 option(MINI_OEMS_BUILD_TESTS "Build the unit and integration tests" ON)
+option(MINI_OEMS_BUILD_BENCHMARKS "Build the benchmarks" ON)
 
 # MinGW: link the C++ runtime statically so the binaries run without MSYS2's DLLs on PATH.
 if(MINGW)
@@ -38,6 +39,7 @@ add_library(oems_core
   src/in_process_venue.cpp
   src/order.cpp
   src/order_book.cpp
+  src/risk.cpp
   src/types.cpp
 )
 target_include_directories(oems_core PUBLIC include)
@@ -46,4 +48,8 @@ target_link_libraries(oems_core PRIVATE oems_options)
 if(MINI_OEMS_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
+endif()
+
+if(MINI_OEMS_BUILD_BENCHMARKS)
+  add_subdirectory(bench)
 endif()

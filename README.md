@@ -61,14 +61,17 @@ Any transition not in this table is rejected and leaves the order unchanged. For
 
 These checks run in order, cheapest first, and stop at the first failure:
 
-1. The symbol is known and allowed to trade.
+1. The account and symbol are known, and the symbol is open for trading.
 2. Quantity is above zero and within the per-symbol maximum.
 3. Price is positive and on the tick grid.
-4. Price is within a band around a reference price, to catch "fat finger" errors.
-5. Notional (price × quantity) is within the per-account maximum, using overflow-safe arithmetic.
-6. The position limit holds for each account and symbol, and for each account overall. The check uses worst-case exposure: current position plus open orders plus the new order.
+4. Price is within a band around the symbol's reference price, to catch "fat finger" errors.
+5. Notional (price × quantity) is within the per-account maximum. It's computed in 128 bits, so a huge order can't overflow and slip under the limit.
+6. The worst-case position in the symbol is within the account's limit. Worst case means current position, plus every open order on the same side, plus this order. Otherwise ten orders, each under the limit, could breach it together.
+7. Gross exposure across all symbols is within the account's limit. This is worst-case positions valued at reference prices.
 
-Cancels are never blocked by risk checks, because reducing risk must always be possible. A cancel/replace is re-checked against its new price and quantity.
+An order that doesn't increase the worst case is always allowed, even if the account is already over a limit (for example, after the limit was lowered during the day). That covers a sell while long, or a replace that shrinks an order. Cancels are never checked, because reducing risk must always be possible. A cancel/replace is re-checked against its new price and quantity.
+
+Limits and exposures sit in flat arrays indexed by small integer IDs, so a check does no hashing, no memory allocation and no locking.
 
 ## FIX messages
 
@@ -86,11 +89,13 @@ These edge cases are covered by tests (*planned*): duplicate `ClOrdID`, cancel b
 
 | Metric | Design target | Measured | How measured |
 |---|---|---|---|
-| Risk-check latency | ~1 µs per order | not yet measured | |
+| Risk-check latency | ~1 µs per order | **7.4 ns** median (passes every check); 1.5 ns when rejected by the first check; 14.1 ns including exposure updates for an accepted, filled order | `bench/risk_benchmark` (Google Benchmark, 10 repetitions, median), over 4,096 varied orders across 500 symbols and 50 accounts. Intel Core Ultra 7 165U laptop, Windows 11, GCC 16.1, Release build. |
 | End-to-end throughput (local FIX sessions) | 20,000 orders/s | not yet measured | |
-| Test cases | 120 | not yet measured | |
+| Test cases | 120 | not yet final (181 so far) | |
 
-Numbers will be reported with hardware, OS and method. A missed target stays in the table with an explanation.
+All numbers come with hardware, OS and method. A missed target stays in the table with an explanation.
+
+The risk number is the check measured on its own, in a tight loop with warm caches. Inside a real order flow it competes with FIX parsing and the network for cache space, and the end-to-end breakdown will show its real share. The laptop numbers will be re-measured on a 2-core Linux VM.
 
 ## Tech stack
 
@@ -101,7 +106,7 @@ Numbers will be reported with hardware, OS and method. A missed target stays in 
 | Order book | Written from scratch for this project |
 | Build | CMake |
 | Tests | GoogleTest |
-| Microbenchmarks | Google Benchmark (*planned*) |
+| Microbenchmarks | Google Benchmark |
 | CI | GitHub Actions on Ubuntu (*planned*) |
 
 ## Why these choices
@@ -110,10 +115,11 @@ Numbers will be reported with hardware, OS and method. A missed target stays in 
 - **Fixed-point prices.** Prices are stored as integers (for example, 10.25 becomes 102500). Floating-point rounding has no place in money calculations.
 - **Explicit transition table.** Illegal order states can't occur by accident, and every transition is testable.
 - **Single-threaded core.** No locks, deterministic behaviour, and easy replay of any scenario.
+- **Testing against simple reference models.** The order book is checked against a flat-list book that's slow but obviously correct, over 200,000 random operations. The risk engine's incrementally updated exposure is checked against a full recount, over 100,000 random operations. The state machine gets 250,000 random events. Seeds are fixed, so every run is identical. To prove the tests can fail, deliberate bugs were planted in each component, and every one was caught by at least two tests.
 
 ## Building
 
-You need Git, bash, CMake 3.20 or newer, Ninja, and a C++20 compiler.
+You need Git, bash, CMake 3.25 or newer, Ninja, and a C++20 compiler.
 
 - **Linux:** `sudo apt install build-essential cmake ninja-build git`
 - **Windows:** MSYS2 with the MinGW-w64 toolchain (`pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-ninja`). Run the script from Git Bash or an MSYS2 shell.
