@@ -9,6 +9,8 @@ FetchContent_MakeAvailable(googletest)
 include(GoogleTest)
 
 add_executable(oems_tests
+  in_process_venue_test.cpp
+  order_book_test.cpp
   order_test.cpp
   quickfix_smoke_test.cpp
   types_test.cpp

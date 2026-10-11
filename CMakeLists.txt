@@ -35,8 +35,10 @@ find_package(quickfix CONFIG REQUIRED
 # The core: order types, lifecycle, risk and matching. Plain C++ with no FIX
 # dependency, so all of it can be tested without sockets or sessions.
 add_library(oems_core
-  src/types.cpp
+  src/in_process_venue.cpp
   src/order.cpp
+  src/order_book.cpp
+  src/types.cpp
 )
 target_include_directories(oems_core PUBLIC include)
 target_link_libraries(oems_core PRIVATE oems_options)

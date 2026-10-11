@@ -20,6 +20,10 @@ __extension__ typedef __int128 Int128;
 
 enum class Side : std::uint8_t { Buy, Sell };
 
+// Day: whatever doesn't trade at once rests on the book until filled or cancelled.
+// Ioc (immediate or cancel): whatever doesn't trade at once is cancelled.
+enum class TimeInForce : std::uint8_t { Day, Ioc };
+
 // A price stored as a whole number of 1/10,000ths (4 decimal places), so 150.25
 // is stored as 1'502'500. Exact, cheap to compare, and safe to use as a map key.
 class Price {

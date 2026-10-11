@@ -7,6 +7,10 @@ on:
 jobs:
   linux:
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        # Release is what gets benchmarked; Debug keeps the internal assertions switched on.
+        config: [Release, Debug]
     steps:
       - uses: actions/checkout@v7
 
@@ -21,4 +25,4 @@ jobs:
           key: quickfix-${{ runner.os }}-${{ hashFiles('scripts/build_quickfix.sh', 'third_party/quickfix/mingw.patch') }}
 
       - name: Build and test
-        run: bash scripts/build.sh Release
+        run: bash scripts/build.sh ${{ matrix.config }}
