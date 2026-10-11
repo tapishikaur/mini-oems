@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build QuickFIX from a pinned upstream commit, with the MinGW patch applied,
-# and install it under build/_deps/quickfix-install.
+# and install it under <build root>/_deps/quickfix-install (see scripts/common.sh).
 #
 # Works on Linux and on Windows (Git Bash or MSYS2 shell, MinGW-w64 GCC).
 # Usage:  scripts/build_quickfix.sh
@@ -12,19 +12,13 @@ QUICKFIX_REPO="https://github.com/quickfix/quickfix.git"
 QUICKFIX_COMMIT="386ce46e917ae494ab6e90b1be90fd421cdbe3f9"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/common.sh"
 PATCH="$ROOT/third_party/quickfix/mingw.patch"
-DEPS="$ROOT/build/_deps"
+DEPS="$MINI_OEMS_BUILD_ROOT/_deps"
 SRC="$DEPS/quickfix-src"
 BLD="$DEPS/quickfix-build"
-PREFIX="$DEPS/quickfix-install"
 QUICKFIX_TESTS="${QUICKFIX_TESTS:-OFF}"
 JOBS="${JOBS:-4}"
-
-# On Windows, prefer the MSYS2 MinGW-w64 toolchain (g++, ninja) if it's installed.
-case "$(uname -s)" in
-  MINGW* | MSYS* | CYGWIN*)
-    [ -d /c/msys64/mingw64/bin ] && export PATH="/c/msys64/mingw64/bin:$PATH" ;;
-esac
 
 # Fetch exactly the pinned commit. autocrlf=false keeps files byte-identical to the
 # upstream repository on every OS, so the patch applies the same way everywhere.
@@ -40,7 +34,7 @@ git -C "$SRC" apply --whitespace=nowarn "$PATCH"
 
 cmake -S "$SRC" -B "$BLD" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+  -DCMAKE_INSTALL_PREFIX="$QUICKFIX_PREFIX" \
   -DQUICKFIX_SHARED_LIBS=OFF \
   -DQUICKFIX_EXAMPLES=OFF \
   -DQUICKFIX_TESTS="$QUICKFIX_TESTS" \
@@ -48,4 +42,4 @@ cmake -S "$SRC" -B "$BLD" -G Ninja \
 cmake --build "$BLD" -j "$JOBS"
 cmake --install "$BLD" > /dev/null
 
-echo "QuickFIX ${QUICKFIX_COMMIT:0:8} installed to: $PREFIX"
+echo "QuickFIX ${QUICKFIX_COMMIT:0:8} installed to: $QUICKFIX_PREFIX"
