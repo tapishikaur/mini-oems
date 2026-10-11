@@ -1,0 +1,13 @@
+{
+  // GitHub Codespaces / VS Code dev container: Ubuntu 24.04 with GCC, CMake and
+  // Ninja. On a 2-core codespace, run: bash scripts/build.sh && bash scripts/bench.sh
+  "name": "mini-oems",
+  "image": "mcr.microsoft.com/devcontainers/cpp:2-ubuntu-24.04",
+  "hostRequirements": { "cpus": 2 },
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y ninja-build",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-vscode.cpptools", "ms-vscode.cmake-tools"]
+    }
+  }
+}

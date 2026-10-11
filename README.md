@@ -1,5 +1,7 @@
 # MiniOEMS
 
+[![CI](https://github.com/tapishikaur/mini-oems/actions/workflows/ci.yml/badge.svg)](https://github.com/tapishikaur/mini-oems/actions/workflows/ci.yml)
+
 A FIX 4.4 order gateway in C++20 with pre-trade risk checks, an explicit order-lifecycle state machine, and an in-process limit order book.
 
 > **Status:** feature-complete, with 227 tests. Microbenchmarks are measured; end-to-end FIX throughput will be measured on a 2-core Linux VM.
@@ -44,6 +46,7 @@ Everything runs on one thread (QuickFIX's `SocketAcceptor`), so the core needs n
 | `bench/` | `risk_benchmark`, `pipeline_benchmark`, `oems_load_client`, and `results/` |
 | `config/` | gateway, benchmark and load-client settings; instrument and account limits |
 | `scripts/` | `build.sh` (build and test), `bench.sh` (all benchmarks), `build_quickfix.sh` |
+| `.github/workflows/`, `.devcontainer/` | CI, and the Codespaces dev container |
 | `third_party/quickfix/` | the MinGW patch for QuickFIX and its notes |
 
 ## Order lifecycle
@@ -180,7 +183,7 @@ The random tests use fixed seeds, so every run sees the same flow. To prove the 
 | Build | CMake |
 | Tests | GoogleTest |
 | Microbenchmarks | Google Benchmark |
-| CI | GitHub Actions on Ubuntu, Release and Debug builds (configured; runs once the repository is on GitHub) |
+| CI | GitHub Actions on Ubuntu 24.04 (GCC 13): builds QuickFIX from the pinned commit and runs every test, in Release and in Debug, on every push |
 
 ## Why these choices
 
@@ -200,6 +203,7 @@ You need Git, bash, CMake 3.25 or newer, Ninja, and a C++20 compiler.
 
 - **Linux:** `sudo apt install build-essential cmake ninja-build git`
 - **Windows:** MSYS2 with the MinGW-w64 toolchain (`pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-ninja`). Run the script from Git Bash or an MSYS2 shell.
+- **GitHub Codespaces:** the dev container in `.devcontainer/` has everything installed.
 
 ```bash
 bash scripts/build.sh            # Release build; Debug: bash scripts/build.sh Debug
