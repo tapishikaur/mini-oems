@@ -1,165 +1,131 @@
-# MiniOEMS — FIX 4.4 Order Gateway with Pre-Trade Risk (C++20)
+# MiniOEMS
 
-> **Resume target:** Polymer Capital
+A FIX 4.4 order gateway in C++20 with pre-trade risk checks, an explicit order-lifecycle state machine, and an in-process limit order book.
 
-## Problem
+> **Status: work in progress.** This README describes the design. Anything marked *planned* is not implemented yet, and the results table shows only numbers that have actually been measured.
 
-Build the core of an order and execution management system:
-a FIX 4.4 gateway that validates incoming orders, enforces pre-trade risk limits,
-manages each order's full lifecycle, and routes accepted orders to an in-process
-limit order book engine.
+## What it does
 
----
+MiniOEMS is the core of an order and execution management system (OEMS). Clients connect over FIX 4.4 and send orders. Each order is:
+
+1. **Received and validated.** QuickFIX handles the FIX session layer: logon, heartbeats, sequence numbers and resends.
+2. **Risk-checked** before it goes anywhere.
+3. **Tracked** by a state machine that refuses illegal transitions.
+4. **Matched** in a price-time-priority limit order book.
+5. **Reported back** with an ExecutionReport for every change.
 
 ## Architecture
 
 ```mermaid
-graph TD
-    TC[Test Client / FIX Initiator] -- FIX 4.4 TCP --> GW[FIX Gateway\nAcceptor]
-    GW -->|NewOrder / Cancel / Replace| RS[Risk Engine\nPre-trade checks]
-    RS -->|accepted| OB[Order Book Engine\nin-process call]
-    RS -->|rejected| GW
-    OB -->|fills / partial fills| GW
-    GW -- ExecutionReport --> TC
-
-    subgraph MiniOEMS
-        GW
-        RS
-        OB
-    end
+flowchart LR
+    C["Client<br/>(FIX initiator)"] -- "35=D / F / G" --> Q["QuickFIX acceptor<br/>(session layer)"]
+    Q --> G["FIX gateway<br/>FIX ⇄ internal types"]
+    G --> R["Pre-trade risk"]
+    R -- "rejected" --> G
+    R -- "accepted" --> M["Order manager<br/>state machine + positions"]
+    M <--> B["Limit order book<br/>price-time priority"]
+    M -- "acks, fills" --> G
+    G -- "35=8 / 35=9" --> Q
+    Q --> C
 ```
 
-### Order Lifecycle State Machine
+The gateway, risk engine, order manager and order book run on a single thread (QuickFIX's `SocketAcceptor`), so the core needs no locks and is deterministic: the same input always produces the same output.
 
+## Order lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> PendingNew: NewOrderSingle (35=D)
+    PendingNew --> Rejected: fails a risk check
+    PendingNew --> New: accepted
+    New --> PartiallyFilled: partial fill
+    New --> Filled: full fill
+    PartiallyFilled --> Filled: remaining quantity filled
+    New --> PendingCancel: cancel (35=F)
+    PartiallyFilled --> PendingCancel: cancel (35=F)
+    PendingCancel --> Canceled: cancel done
+    PendingCancel --> Filled: filled first (cancel rejected, 35=9)
+    New --> PendingReplace: cancel/replace (35=G)
+    PartiallyFilled --> PendingReplace: cancel/replace (35=G)
+    PendingReplace --> New: replace done
+    PendingReplace --> PartiallyFilled: replace done
+    PendingReplace --> Filled: filled first (replace rejected, 35=9)
+    Rejected --> [*]
+    Canceled --> [*]
+    Filled --> [*]
 ```
-             ┌──────────┐
-             │ PendingNew│
-             └────┬─────┘
-                  │ ACK
-                  ▼
-            ┌─────────┐
-            │   New   │◄──────────────────────────┐
-            └──┬──┬───┘                           │
-         Fill  │  │ Cancel / Replace               │ Partial fill → back to New
-               │  ▼                                │
-               │ ┌──────────┐    ┌─────────────────┴──┐
-               │ │ Canceled │    │  PartiallyFilled    │
-               │ └──────────┘    └────────────────────┘
-               ▼
-          ┌────────┐    ┌──────────┐
-          │ Filled │    │ Rejected │
-          └────────┘    └──────────┘
-```
 
-Invalid transitions (e.g. cancel after fill) are rejected by the state machine —
-not silently ignored.
+Any transition not in this table is rejected and leaves the order unchanged. For example, a fill on a canceled order is refused. In FIX 4.4 a successful replace is reported with `ExecType=5` (Replaced), while `OrdStatus` shows the order's current state.
 
----
+## Pre-trade risk checks
 
-## Tech Stack
+These checks run in order, cheapest first, and stop at the first failure:
 
-| Component | Technology | Why this choice |
+1. The symbol is known and allowed to trade.
+2. Quantity is above zero and within the per-symbol maximum.
+3. Price is positive and on the tick grid.
+4. Price is within a band around a reference price, to catch "fat finger" errors.
+5. Notional (price × quantity) is within the per-account maximum, using overflow-safe arithmetic.
+6. The position limit holds for each account and symbol, and for each account overall. The check uses worst-case exposure: current position plus open orders plus the new order.
+
+Cancels are never blocked by risk checks, because reducing risk must always be possible. A cancel/replace is re-checked against its new price and quantity.
+
+## FIX messages
+
+| Message | `35=` | Direction |
 |---|---|---|
-| Core language | C++20 | Zero-overhead abstractions, concepts for type-safe message dispatch |
-| FIX protocol | QuickFIX (built from source on MinGW-w64) | Industry-standard open-source FIX engine; OSI-licensed (LGPL) |
-| Order book | Custom limit order book engine (price-time priority) | Re-uses existing tested engine; in-process call avoids serialisation overhead |
-| Build | CMake + MinGW-w64 (Windows) / GCC (Linux/Codespaces) | Reproducible single-command build on both platforms |
-| Tests | GoogleTest (120 cases) | Standard C++ unit test framework |
-| CI | GitHub Actions (ubuntu-latest) | Free tier, runs on every push |
+| NewOrderSingle | `D` | in |
+| OrderCancelRequest | `F` | in |
+| OrderCancelReplaceRequest | `G` | in |
+| ExecutionReport (new, partial fill, fill, canceled, replaced, rejected) | `8` | out |
+| OrderCancelReject | `9` | out |
 
----
-
-## Pre-Trade Risk Checks
-
-Checked in order, short-circuit on first failure:
-
-1. **Max order quantity** — configurable per symbol
-2. **Max notional** — `price × qty` vs per-account limit
-3. **Per-account position limit** — gross exposure ceiling
-4. **Per-symbol position limit** — concentration ceiling
-5. **Price band** — order price within ± N% of reference price
-
-All checks are branch-light and allocation-free on the hot path.
-
----
-
-## FIX Messages Handled
-
-| Message | Tag 35 | Direction |
-|---|---|---|
-| NewOrderSingle | D | Inbound |
-| OrderCancelRequest | F | Inbound |
-| OrderCancelReplaceRequest | G | Inbound |
-| ExecutionReport (new / partial / fill / canceled / replaced / rejected) | 8 | Outbound |
-
-Edge cases tested: duplicate `ClOrdID`, cancel before acknowledgement,
-out-of-order messages, `PossDupFlag` resends.
-
----
+These edge cases are covered by tests (*planned*): duplicate `ClOrdID`, cancel before acknowledgement, cancels for unknown orders, out-of-sequence messages, and `PossDupFlag`/`PossResend` resends.
 
 ## Results
 
-| Metric | Resume target | Actual (measured) |
-|---|---|---|
-| Test coverage | 120 GoogleTest cases | _(fill in after benchmarks)_ |
-| Risk-check latency | ~1 µs / order | _(fill in after benchmarks)_ |
-| Throughput | 20 k orders/sec over local FIX sessions | _(fill in after benchmarks)_ |
+| Metric | Design target | Measured | How measured |
+|---|---|---|---|
+| Risk-check latency | ~1 µs per order | not yet measured | |
+| End-to-end throughput (local FIX sessions) | 20,000 orders/s | not yet measured | |
+| Test cases | 120 | not yet measured | |
 
-> **Honest note:** QuickFIX message parsing is the dominant throughput cost.
-> The results table will be updated with real measured numbers.
-> Resume bullets will be revised to match.
+Numbers will be reported with hardware, OS and method. A missed target stays in the table with an explanation.
 
----
+## Tech stack
 
-## How to Build
+| Component | Choice |
+|---|---|
+| Language | C++20 |
+| FIX engine | [QuickFIX](https://github.com/quickfix/quickfix), built from source at a pinned commit |
+| Order book | Written from scratch for this project |
+| Build | CMake |
+| Tests | GoogleTest |
+| Microbenchmarks | Google Benchmark (*planned*) |
+| CI | GitHub Actions on Ubuntu (*planned*) |
 
-### Prerequisites
+## Why these choices
 
-- CMake ≥ 3.12
-- GCC ≥ 11 (Linux / GitHub Codespaces) **or** MinGW-w64 via MSYS2 (Windows)
-- QuickFIX built from source (see `scripts/build_quickfix.sh`)
-- GoogleTest (fetched by CMake)
-- OpenSSL (optional; required only for SSL sessions)
+- **QuickFIX for the session layer.** Sequence numbers, gap detection, resends and heartbeats are easy to get subtly wrong. QuickFIX is a mature open-source engine, which leaves this project free to focus on order handling and risk.
+- **Fixed-point prices.** Prices are stored as integers (for example, 10.25 becomes 102500). Floating-point rounding has no place in money calculations.
+- **Explicit transition table.** Illegal order states can't occur by accident, and every transition is testable.
+- **Single-threaded core.** No locks, deterministic behaviour, and easy replay of any scenario.
 
-### Build steps
+## Building
 
-```bash
-# 1. Build QuickFIX (first time only)
-bash scripts/build_quickfix.sh
+*Planned.* Build scripts and instructions will arrive with the first code milestone. The targets are Windows (MSYS2 MinGW-w64 GCC) and Linux (GCC).
 
-# 2. Build MiniOEMS
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j4
+QuickFIX doesn't officially support MinGW. This project builds it from a pinned commit with a patch that makes MinGW use QuickFIX's existing Windows (Winsock) code paths.
 
-# 3. Run tests
-ctest --test-dir build --output-on-failure
-```
+## Limitations
 
----
-
-## Running the Demo
-
-```bash
-# Terminal 1 — start the gateway
-./build/mini_oems --config config/acceptor.cfg
-
-# Terminal 2 — send test orders
-./build/test_client --config config/initiator.cfg
-```
-
----
-
-## Limitations & Next Steps
-
-- **No persistence** — orders are in-memory only; a crash loses state.
-- **Single-threaded matching** — one match thread per session; add sharding for multi-symbol scale.
-- **No market data** — price-band check uses a static reference price; a real system feeds it from a market-data stream.
-- **QuickFIX parsing is the bottleneck** — see benchmark results for the breakdown.
-
-Next steps: persistent order store (SQLite or flat-file journal), dynamic reference prices, FIX session management improvements.
-
----
+- Limit orders only (Day and IOC time-in-force).
+- Reference prices come from a config file, not a live market-data feed.
+- Order state is held in memory. QuickFIX persists session messages, but order state isn't recovered after a restart.
+- A single venue: an in-process order book with no smart order routing.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+This project's code is released under the [MIT License](LICENSE).
+
+QuickFIX is distributed under the QuickFIX Software License, Version 1.0, a BSD-style licence. See the QuickFIX repository for its terms.
