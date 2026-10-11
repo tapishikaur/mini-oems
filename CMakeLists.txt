@@ -49,13 +49,13 @@ target_link_libraries(oems_core PRIVATE oems_options)
 
 # The FIX edge: the only code that touches QuickFIX.
 set(MINI_OEMS_FIX44_XML "${MINI_OEMS_QUICKFIX_PREFIX}/share/quickfix/FIX44.xml")
-add_library(oems_gateway src/fix_gateway.cpp)
+add_library(oems_gateway src/fix_gateway.cpp src/fix_settings.cpp)
 target_link_libraries(oems_gateway PUBLIC oems_core quickfix PRIVATE oems_options)
+target_compile_definitions(oems_gateway PRIVATE MINI_OEMS_FIX44_XML="${MINI_OEMS_FIX44_XML}")
 
 # The gateway executable.
 add_executable(mini_oems src/main.cpp)
 target_link_libraries(mini_oems PRIVATE oems_gateway oems_options)
-target_compile_definitions(mini_oems PRIVATE MINI_OEMS_FIX44_XML="${MINI_OEMS_FIX44_XML}")
 
 if(MINI_OEMS_BUILD_TESTS)
   enable_testing()

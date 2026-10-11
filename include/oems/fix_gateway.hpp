@@ -24,6 +24,16 @@
 
 namespace oems {
 
+// The translations themselves, as free functions so they can be tested and
+// benchmarked without a live session. A request that can't become a valid order
+// (unknown symbol, unsupported type, bad price text...) comes back with
+// `invalid` set, for the order manager to reject.
+ClientNewOrder toClientNewOrder(const FIX::Message& m, ClientId client, const Directory& symbols,
+                                const Directory& accounts);
+ClientReplace toClientReplace(const FIX::Message& m, ClientId client, const Directory& symbols);
+FIX::Message toFix(const ExecutionReport& report, const Directory& symbols, const Directory& accounts);
+FIX::Message toFix(const CancelReject& reject);
+
 class FixGateway final : public FIX::Application, public ReportSink {
 public:
   FixGateway(OrderManager& orders, const Directory& symbols, const Directory& accounts)
@@ -44,9 +54,6 @@ public:
 
 private:
   ClientId clientFor(const FIX::SessionID& session);
-  void onNewOrderSingle(const FIX::Message& message, ClientId client);
-  void onCancelRequest(const FIX::Message& message, ClientId client);
-  void onReplaceRequest(const FIX::Message& message, ClientId client);
   void send(FIX::Message& message, ClientId client);
 
   OrderManager& orders_;

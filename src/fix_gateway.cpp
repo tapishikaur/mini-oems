@@ -107,21 +107,9 @@ OrderFields readOrderFields(const FIX::Message& m, const Directory& symbols, Pro
 
 } // namespace
 
-void FixGateway::fromApp(const FIX::Message& message, const FIX::SessionID& session) {
-  const std::string& type = message.getHeader().getField(FIX::FIELD::MsgType);
-  const ClientId client = clientFor(session);
-  if (type == FIX::MsgType_NewOrderSingle) {
-    onNewOrderSingle(message, client);
-  } else if (type == FIX::MsgType_OrderCancelRequest) {
-    onCancelRequest(message, client);
-  } else if (type == FIX::MsgType_OrderCancelReplaceRequest) {
-    onReplaceRequest(message, client);
-  } else {
-    throw FIX::UnsupportedMessageType(); // QuickFIX answers with a BusinessMessageReject
-  }
-}
 
-void FixGateway::onNewOrderSingle(const FIX::Message& m, ClientId client) {
+ClientNewOrder toClientNewOrder(const FIX::Message& m, ClientId client, const Directory& symbols,
+                                const Directory& accounts) {
   ClientNewOrder order;
   order.client = client;
   order.clOrdId = m.getField(FIX::FIELD::ClOrdID);
@@ -134,44 +122,40 @@ void FixGateway::onNewOrderSingle(const FIX::Message& m, ClientId client) {
 
   Problems problems;
   const std::optional<std::string> account = optionalField(m, FIX::FIELD::Account);
-  if (const auto id = account ? accounts_.find(*account) : std::nullopt) {
+  if (const auto id = account ? accounts.find(*account) : std::nullopt) {
     order.account = *id;
   } else {
     order.account = kNoId;
     problems.add(ord_rej_reason::UnknownAccount, account ? "unknown account " + *account : "missing Account");
   }
 
-  const OrderFields f = readOrderFields(m, symbols_, problems, kNewOrderReasons);
+  const OrderFields f = readOrderFields(m, symbols, problems, kNewOrderReasons);
   order.symbol = f.symbol;
   order.side = f.side;
   order.price = f.price;
   order.qty = f.qty;
   order.tif = f.tif;
   order.invalid = problems.take();
-  orders_.onNewOrder(order);
+  return order;
 }
 
-void FixGateway::onCancelRequest(const FIX::Message& m, ClientId client) {
-  orders_.onCancel({client, m.getField(FIX::FIELD::ClOrdID), m.getField(FIX::FIELD::OrigClOrdID)});
-}
-
-void FixGateway::onReplaceRequest(const FIX::Message& m, ClientId client) {
+ClientReplace toClientReplace(const FIX::Message& m, ClientId client, const Directory& symbols) {
   ClientReplace replace;
   replace.client = client;
   replace.clOrdId = m.getField(FIX::FIELD::ClOrdID);
   replace.origClOrdId = m.getField(FIX::FIELD::OrigClOrdID);
 
   Problems problems;
-  const OrderFields f = readOrderFields(m, symbols_, problems, kReplaceReasons);
+  const OrderFields f = readOrderFields(m, symbols, problems, kReplaceReasons);
   replace.symbol = f.symbol;
   replace.side = f.side;
   replace.price = f.price;
   replace.qty = f.qty;
   replace.invalid = problems.take();
-  orders_.onReplace(replace);
+  return replace;
 }
 
-void FixGateway::onExecutionReport(const ExecutionReport& r) {
+FIX::Message toFix(const ExecutionReport& r, const Directory& symbols, const Directory& accounts) {
   FIX44::ExecutionReport m;
   m.setField(FIX::FIELD::OrderID, orderIdText(r.orderId));
   m.setField(FIX::FIELD::ExecID, std::to_string(r.execId));
@@ -180,8 +164,8 @@ void FixGateway::onExecutionReport(const ExecutionReport& r) {
   m.setField(FIX::FIELD::ClOrdID, r.clOrdId);
   if (!r.origClOrdId.empty()) m.setField(FIX::FIELD::OrigClOrdID, r.origClOrdId);
   // Omitted when the request named an account or symbol we don't know.
-  if (accounts_.contains(r.account)) m.setField(FIX::FIELD::Account, accounts_.name(r.account));
-  if (symbols_.contains(r.symbol)) m.setField(FIX::FIELD::Symbol, symbols_.name(r.symbol));
+  if (accounts.contains(r.account)) m.setField(FIX::FIELD::Account, accounts.name(r.account));
+  if (symbols.contains(r.symbol)) m.setField(FIX::FIELD::Symbol, symbols.name(r.symbol));
   m.setField(FIX::FIELD::Side, r.side == Side::Buy ? "1" : "2");
   m.setField(FIX::FIELD::OrdType, "2");
   m.setField(FIX::FIELD::TimeInForce, r.tif == TimeInForce::Day ? "0" : "3");
@@ -197,10 +181,10 @@ void FixGateway::onExecutionReport(const ExecutionReport& r) {
   if (r.ordRejReason >= 0) m.setField(FIX::FIELD::OrdRejReason, std::to_string(r.ordRejReason));
   if (!r.text.empty()) m.setField(FIX::FIELD::Text, r.text);
   m.setField(FIX::TransactTime());
-  send(m, r.client);
+  return m;
 }
 
-void FixGateway::onCancelReject(const CancelReject& r) {
+FIX::Message toFix(const CancelReject& r) {
   FIX44::OrderCancelReject m;
   m.setField(FIX::FIELD::OrderID, orderIdText(r.orderId));
   m.setField(FIX::FIELD::ClOrdID, r.clOrdId);
@@ -209,7 +193,31 @@ void FixGateway::onCancelReject(const CancelReject& r) {
   m.setField(FIX::FIELD::CxlRejResponseTo, r.replace ? "2" : "1");
   m.setField(FIX::FIELD::CxlRejReason, std::to_string(r.reason));
   if (!r.text.empty()) m.setField(FIX::FIELD::Text, r.text);
-  send(m, r.client);
+  return m;
+}
+
+void FixGateway::fromApp(const FIX::Message& message, const FIX::SessionID& session) {
+  const std::string& type = message.getHeader().getField(FIX::FIELD::MsgType);
+  const ClientId client = clientFor(session);
+  if (type == FIX::MsgType_NewOrderSingle) {
+    orders_.onNewOrder(toClientNewOrder(message, client, symbols_, accounts_));
+  } else if (type == FIX::MsgType_OrderCancelRequest) {
+    orders_.onCancel({client, message.getField(FIX::FIELD::ClOrdID), message.getField(FIX::FIELD::OrigClOrdID)});
+  } else if (type == FIX::MsgType_OrderCancelReplaceRequest) {
+    orders_.onReplace(toClientReplace(message, client, symbols_));
+  } else {
+    throw FIX::UnsupportedMessageType(); // QuickFIX answers with a BusinessMessageReject
+  }
+}
+
+void FixGateway::onExecutionReport(const ExecutionReport& report) {
+  FIX::Message m = toFix(report, symbols_, accounts_);
+  send(m, report.client);
+}
+
+void FixGateway::onCancelReject(const CancelReject& reject) {
+  FIX::Message m = toFix(reject);
+  send(m, reject.client);
 }
 
 ClientId FixGateway::clientFor(const FIX::SessionID& session) {

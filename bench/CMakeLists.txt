@@ -11,3 +11,11 @@ FetchContent_MakeAvailable(benchmark)
 
 add_executable(risk_benchmark risk_benchmark.cpp)
 target_link_libraries(risk_benchmark PRIVATE oems_core oems_options benchmark::benchmark)
+
+# Stage-by-stage cost of one order inside the gateway.
+add_executable(pipeline_benchmark pipeline_benchmark.cpp)
+target_link_libraries(pipeline_benchmark PRIVATE oems_gateway oems_options benchmark::benchmark)
+
+# FIX load generator: runs against a live mini_oems.
+add_executable(oems_load_client load_client.cpp)
+target_link_libraries(oems_load_client PRIVATE oems_gateway oems_options)
