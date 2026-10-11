@@ -14,6 +14,8 @@ QuickFIX recognises Windows by checking `_MSC_VER`, which only Microsoft's compi
 
 The patch changes nothing on Linux or macOS, because GCC and Clang there don't define `__MINGW32__`.
 
+One detail: QuickFIX's Windows thread code spells the calling convention `_stdcall`, which is Microsoft's spelling. MinGW only accepts that in GNU mode, and this project compiles in strict `-std=c++20`, so the patch uses `__stdcall`, which both compilers accept. QuickFIX itself built fine either way; the problem only showed up when strict-mode code included QuickFIX's headers.
+
 ## Verification (Windows 11, MSYS2 MinGW-w64 GCC 16.1)
 
 - **QuickFIX acceptance tests:** 467 of 467 passed. These are scripted FIX sessions covering FIX 4.0 to 5.0 SP2: logon, sequence-number gaps, resend requests, PossDup handling and malformed messages.

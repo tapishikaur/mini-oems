@@ -2,7 +2,7 @@
 
 A FIX 4.4 order gateway in C++20 with pre-trade risk checks, an explicit order-lifecycle state machine, and an in-process limit order book.
 
-> **Status: work in progress.** This README describes the design. Anything marked *planned* is not implemented yet, and the results table shows only numbers that have actually been measured.
+> **Status:** feature-complete, with 227 tests. Microbenchmarks are measured; end-to-end FIX throughput will be measured on a 2-core Linux VM.
 
 ## What it does
 
@@ -18,18 +18,33 @@ MiniOEMS is the core of an order and execution management system (OEMS). Clients
 
 ```mermaid
 flowchart LR
-    C["Client<br/>(FIX initiator)"] -- "35=D / F / G" --> Q["QuickFIX acceptor<br/>(session layer)"]
-    Q --> G["FIX gateway<br/>FIX ⇄ internal types"]
-    G --> R["Pre-trade risk"]
-    R -- "rejected" --> G
-    R -- "accepted" --> M["Order manager<br/>state machine + positions"]
-    M <--> B["Limit order book<br/>price-time priority"]
-    M -- "acks, fills" --> G
+    C["Client<br/>(FIX initiator)"] -- "35=D / F / G" --> Q["QuickFIX acceptor<br/>session layer"]
+    Q -- "FIX::Message" --> G["FixGateway<br/>FIX ⇄ internal types"]
+    G -- "new / cancel / replace" --> M["OrderManager<br/>ClOrdID checks,<br/>one state machine per order"]
+    M -- "check; exposure updates" --> R["RiskEngine"]
+    M -- "IOrderRouter" --> V["InProcessVenue<br/>one OrderBook per symbol"]
+    V -- "OrderEvents" --> M
+    M -- "ExecutionReport / CancelReject" --> G
     G -- "35=8 / 35=9" --> Q
     Q --> C
 ```
 
-The gateway, risk engine, order manager and order book run on a single thread (QuickFIX's `SocketAcceptor`), so the core needs no locks and is deterministic: the same input always produces the same output.
+- **`FixGateway`** is the only code that knows FIX.
+- **`OrderManager`** owns the orders. It asks `RiskEngine` before anything goes out, sends requests through the `IOrderRouter` interface, and applies every event that comes back to that order's state machine.
+- **`InProcessVenue`** puts orders on the order book, one book per symbol. A real exchange connection could replace it behind the same interface.
+
+Everything runs on one thread (QuickFIX's `SocketAcceptor`), so the core needs no locks and is deterministic: the same input always produces the same output.
+
+### Project layout
+
+| Path | What's there |
+|---|---|
+| `include/oems/`, `src/` | `types` (fixed-point prices), `order` (state machine), `order_book`, `in_process_venue`, `risk`, `order_manager`, `config`, plus `fix_gateway` and `fix_settings` (the FIX edge) and `main.cpp` (the `mini_oems` executable) |
+| `tests/` | GoogleTest suites, including the end-to-end FIX tests |
+| `bench/` | `risk_benchmark`, `pipeline_benchmark`, `oems_load_client`, and `results/` |
+| `config/` | gateway, benchmark and load-client settings; instrument and account limits |
+| `scripts/` | `build.sh` (build and test), `bench.sh` (all benchmarks), `build_quickfix.sh` |
+| `third_party/quickfix/` | the MinGW patch for QuickFIX and its notes |
 
 ## Order lifecycle
 
@@ -101,15 +116,59 @@ All of these are tested over a real localhost FIX connection, with QuickFIX on b
 
 ## Results
 
-| Metric | Design target | Measured | How measured |
-|---|---|---|---|
-| Risk-check latency | ~1 µs per order | **7.4 ns** median (passes every check); 1.5 ns when rejected by the first check; 14.1 ns including exposure updates for an accepted, filled order | `bench/risk_benchmark` (Google Benchmark, 10 repetitions, median), over 4,096 varied orders across 500 symbols and 50 accounts. Intel Core Ultra 7 165U laptop, Windows 11, GCC 16.1, Release build. |
-| End-to-end throughput (local FIX sessions) | 20,000 orders/s | not yet measured | |
-| Test cases | 120 | not yet final (227 so far) | |
+Microbenchmarks were measured on an Intel Core Ultra 7 165U laptop running Windows 11, MinGW-w64 GCC 16.1, Release build. Reproduce everything with `bash scripts/bench.sh`.
 
-All numbers come with hardware, OS and method. A missed target stays in the table with an explanation.
+| Metric | Measured | How measured |
+|---|---|---|
+| Risk-check latency | **11.6 ns** median for an order that passes every check (7.4 ns in another run on the same laptop); 2.2 ns when rejected by the first check; 21.7 ns including exposure updates for an accepted, filled order | `bench/risk_benchmark`: Google Benchmark, 10 repetitions, median, over 4,096 varied orders across 500 symbols and 50 accounts |
+| Gateway work per order | **≈ 12 µs**, stage by stage below | `bench/pipeline_benchmark`: Google Benchmark, 5 repetitions, median |
+| End-to-end throughput and latency over FIX | To be measured on a 2-core Linux VM | `oems_load_client` against `mini_oems` over localhost |
+| Test cases | **227**, all passing in Release and Debug, including duplicate ClOrdIDs, a PossDupFlag resend and an out-of-sequence gap over real FIX sessions | `ctest`; see [Tests](#tests) |
 
-The risk number is the check measured on its own, in a tight loop with warm caches. Inside a real order flow it competes with FIX parsing and the network for cache space, and the end-to-end breakdown will show its real share. The laptop numbers will be re-measured on a 2-core Linux VM.
+The risk number is the check measured on its own, in a tight loop with warm caches.
+
+### Where the time goes
+
+The gateway's own work for one order, measured stage by stage (`bench/pipeline_benchmark`, median):
+
+| Stage | Time |
+|---|---|
+| QuickFIX parses the message | 1.5 µs |
+| QuickFIX validates it against the FIX 4.4 dictionary | 1.3 µs |
+| The gateway translates it into an internal order | 0.2 µs |
+| The order manager: duplicate check, risk, matching, state machine, exposure | 1.8 µs |
+| Build and serialise the execution reports: 2 per order in this flow, 3.6 µs each | 7.1 µs |
+| **Total** | **≈ 12 µs** |
+
+QuickFIX is most of this work: parsing, validation and building replies come to about 10 of the 12 µs. This project's own code (translation, order manager, risk) is about 2 µs per order.
+
+Beyond the message work, there's I/O. A CPU profile on Windows found that, under load, most of the gateway's CPU went to system calls in QuickFIX's Windows event loop, not to processing messages. That loop makes about five system calls for every message it sends:
+1. `select()`, to check the socket is writable;
+2. `send()`, for the message itself;
+3. a write to an internal wake-up socket;
+4. a `recv()` and another `select()` in the event loop, to consume that wake-up.
+
+What would make it faster, roughly in order of effort:
+1. **Run on Linux,** where system calls are much cheaper.
+2. **Fewer system calls.** Send all of an event-loop pass's replies in one call, and skip the wake-up socket when the event loop's own thread is the one sending.
+3. **Get disk writes off the critical path.** Log asynchronously, and write the message store in batches.
+4. **A leaner FIX path for the hot messages.** Parse NewOrderSingle and write ExecutionReport straight from and into a buffer, with no field map.
+5. **Kernel-bypass networking**, which is what high-frequency firms use.
+
+## Tests
+
+| Suite | Tests | What it covers |
+|---|---|---|
+| Order lifecycle | 80 + 13 | Every state × event pair against an independently written spec; scenarios such as a fill beating a cancel, replacing down to the filled quantity, and average price; 250,000 random events checking invariants |
+| Prices and quantities | 33 | Exact FIX decimal parsing, including what must be refused, plus formatting and a 100,000-value round trip |
+| Order book | 19 + 1 | Priority rules, sweeping levels, IOC, cancel, replace priority; 200,000 random operations against a reference book |
+| Venue | 10 + 1 | Event sequences, plus 30,000 random operations with every event applied to the state machine |
+| Risk | 21 + 1 | Each limit at and just past its boundary, check order and overflow; 100,000 random operations against a full exposure recount |
+| Order manager | 25 + 1 | Every reject path, resends, ClOrdID scoping; 20,000 random requests: every request answered, exposure always equal to a recount |
+| FIX gateway (end to end) | 16 | Over localhost with a QuickFIX client: values on the wire, trades, rejects, duplicates, PossResend, cancel/replace, cancel before ack, BusinessMessageReject, a PossDupFlag resend, gap recovery |
+| Config, QuickFIX smoke | 4 + 2 | Limit files, including errors with line numbers; QuickFIX links and parses FIX 4.4 |
+
+The random tests use fixed seeds, so every run sees the same flow. To prove the suite can fail, deliberate bugs were planted in the state machine, order book and risk engine. Every one was caught by at least two tests. The order manager's random test found a real bug while it was being written: a `PossResend` order reusing a cancel's ClOrdID got the status of the order that cancel had targeted, instead of being rejected as a duplicate.
 
 ## Tech stack
 
@@ -131,7 +190,9 @@ The risk number is the check measured on its own, in a tight loop with warm cach
 - **Single-threaded core.** No locks, deterministic behaviour, and easy replay of any scenario.
 - **FIX only at the edge.** The order manager, risk engine, order book and state machine don't know FIX exists. `FixGateway` is the only code that touches QuickFIX, so the core is tested without sockets, and swapping the protocol wouldn't touch it.
 - **Every new ClOrdID gets an order, even one about to be rejected.** The client always gets an OrderID back, and a rejected ClOrdID can't be quietly reused.
-- **Testing against simple reference models.** The order book is checked against a flat-list book that's slow but obviously correct, over 200,000 random operations. The risk engine's incrementally updated exposure is checked against a full recount, over 100,000 random operations. The state machine gets 250,000 random events. Seeds are fixed, so every run is identical. To prove the tests can fail, deliberate bugs were planted in each component, and every one was caught by at least two tests.
+- **Testing against simple reference models.** A slow but obviously correct model catches bugs that hand-written cases miss. The order book is checked against a flat-list book, and the risk engine's incremental exposure against a full recount.
+- **A plain `std::map` of price levels, each a FIFO list, plus a hash index by order ID.** Every operation is O(log levels) or better, and cancels never search a level. A flat, preallocated layout would be faster, but the benchmarks show the book isn't the bottleneck: it's part of the order manager's 1.8 µs.
+- **Measure before optimising.** The stage-by-stage benchmark and the CPU split show where the time actually goes. Here that's QuickFIX's system calls, not anything this project would have guessed to optimise.
 
 ## Building
 
@@ -167,6 +228,25 @@ The executable is in the build output folder.
 
 A malformed line in either CSV stops startup with the line number. A typo is never silently read as zero.
 
+`config/acceptor.cfg` stores and logs every message on disk, the way production would. `config/bench_acceptor.cfg` keeps the session store in memory and doesn't log.
+
+## Benchmarks
+
+```bash
+bash scripts/bench.sh    # after scripts/build.sh; prints everything, takes about 5 minutes
+```
+
+The script runs three things:
+1. The risk check on its own.
+2. Each stage of handling an order inside the gateway.
+3. End-to-end throughput and latency: it starts `mini_oems`, drives it with `oems_load_client`, and does this with both gateway configs.
+
+You can also run the load client by hand against a running gateway:
+
+```bash
+oems_load_client config/load_client.cfg config/instruments.csv ACC1 <orders> <max in flight>
+```
+
 ## Limitations
 
 - Limit orders only (Day and IOC time-in-force).
@@ -176,6 +256,15 @@ A malformed line in either CSV stops startup with the line number. A typo is nev
 - No self-trade prevention: two orders from the same account can trade with each other.
 - No pending-state reports. Cancels and replaces complete within the request, so clients get the final Canceled/Replaced report, never PendingCancel or PendingReplace.
 - The sample session config resets sequence numbers on every logon (`ResetOnLogon=Y`), which keeps demos simple. A production setup keeps them for the whole trading day.
+
+## Next steps
+
+- Measure on a 2-core Linux VM and run CI on GitHub.
+- **A kill switch:** one command that cancels every open order for an account and blocks new ones.
+- **Throughput:** batch outgoing messages per event-loop pass, and take disk logging off the gateway thread.
+- **Recovery:** journal order state so a restart can rebuild open orders and positions.
+- Self-trade prevention, and reference prices from live market data.
+- **More throughput:** shard symbols across threads, one order manager and book per shard.
 
 ## License
 
