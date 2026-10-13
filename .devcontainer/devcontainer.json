@@ -4,6 +4,8 @@
   "name": "mini-oems",
   "image": "mcr.microsoft.com/devcontainers/cpp:2-ubuntu-24.04",
   "hostRequirements": { "cpus": 2 },
+  // sshd lets `gh codespace ssh` run the build and benchmarks from a terminal.
+  "features": { "ghcr.io/devcontainers/features/sshd:1": { "version": "latest" } },
   "postCreateCommand": "sudo apt-get update && sudo apt-get install -y ninja-build libboost-dev",
   "customizations": {
     "vscode": {
