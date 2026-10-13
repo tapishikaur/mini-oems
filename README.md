@@ -4,7 +4,7 @@
 
 A FIX 4.4 order gateway in C++20 with pre-trade risk checks, an explicit order-lifecycle state machine, and an in-process limit order book.
 
-> **Status:** feature-complete, with 227 tests. Microbenchmarks are measured; end-to-end FIX throughput will be measured on a 2-core Linux VM.
+> **Status:** feature-complete, with 231 tests, including a drop copy for position services. Microbenchmarks are measured; end-to-end FIX throughput will be measured on a 2-core Linux VM.
 
 ## What it does
 
@@ -126,7 +126,7 @@ Microbenchmarks were measured on an Intel Core Ultra 7 165U laptop running Windo
 | Risk-check latency | **11.6 ns** median for an order that passes every check (7.4 ns in another run on the same laptop); 2.2 ns when rejected by the first check; 21.7 ns including exposure updates for an accepted, filled order | `bench/risk_benchmark`: Google Benchmark, 10 repetitions, median, over 4,096 varied orders across 500 symbols and 50 accounts |
 | Gateway work per order | **≈ 12 µs**, stage by stage below | `bench/pipeline_benchmark`: Google Benchmark, 5 repetitions, median |
 | End-to-end throughput and latency over FIX | To be measured on a 2-core Linux VM | `oems_load_client` against `mini_oems` over localhost |
-| Test cases | **227**, all passing in Release and Debug, including duplicate ClOrdIDs, a PossDupFlag resend and an out-of-sequence gap over real FIX sessions | `ctest`; see [Tests](#tests) |
+| Test cases | **231**, all passing in Release and Debug, including duplicate ClOrdIDs, a PossDupFlag resend and an out-of-sequence gap over real FIX sessions | `ctest`; see [Tests](#tests) |
 
 The risk number is the check measured on its own, in a tight loop with warm caches.
 
@@ -170,6 +170,7 @@ What would make it faster, roughly in order of effort:
 | Order manager | 25 + 1 | Every reject path, resends, ClOrdID scoping; 20,000 random requests: every request answered, exposure always equal to a recount |
 | FIX gateway (end to end) | 16 | Over localhost with a QuickFIX client: values on the wire, trades, rejects, duplicates, PossResend, cancel/replace, cancel before ack, BusinessMessageReject, a PossDupFlag resend, gap recovery |
 | Config, QuickFIX smoke | 4 + 2 | Limit files, including errors with line numbers; QuickFIX links and parses FIX 4.4 |
+| Drop copy | 4 | Only fills are journaled and every report still reaches the gateway; journal numbering and reads; wire format; the server serves from a Resume point and then new fills over TCP |
 
 The random tests use fixed seeds, so every run sees the same flow. To prove the suite can fail, deliberate bugs were planted in the state machine, order book and risk engine. Every one was caught by at least two tests. The order manager's random test found a real bug while it was being written: a `PossResend` order reusing a cancel's ClOrdID got the status of the order that cancel had targeted, instead of being rejected as a duplicate.
 
@@ -201,8 +202,8 @@ The random tests use fixed seeds, so every run sees the same flow. To prove the 
 
 You need Git, bash, CMake 3.25 or newer, Ninja, and a C++20 compiler.
 
-- **Linux:** `sudo apt install build-essential cmake ninja-build git`
-- **Windows:** MSYS2 with the MinGW-w64 toolchain (`pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-ninja`). Run the script from Git Bash or an MSYS2 shell.
+- **Linux:** `sudo apt install build-essential cmake ninja-build git libboost-dev`
+- **Windows:** MSYS2 with the MinGW-w64 toolchain (`pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-ninja mingw-w64-x86_64-boost`). Run the script from Git Bash or an MSYS2 shell.
 - **GitHub Codespaces:** the dev container in `.devcontainer/` has everything installed.
 
 ```bash
@@ -233,6 +234,23 @@ The executable is in the build output folder.
 A malformed line in either CSV stops startup with the line number. A typo is never silently read as zero.
 
 `config/acceptor.cfg` stores and logs every message on disk, the way production would. `config/bench_acceptor.cfg` keeps the session store in memory and doesn't log.
+
+### Drop copy
+
+```bash
+mini_oems config/acceptor.cfg config/instruments.csv config/accounts.csv 9201
+```
+
+A fourth argument turns on a **drop copy**: every fill is also served on `127.0.0.1:9201` to position, risk or back-office
+systems, the way brokers and exchanges offer one. It speaks the protocol of
+[PosTrack](https://github.com/tapishikaur/postrack), a position and P&L service: a client sends `Resume{last seq}` and gets
+every fill after it, then new ones as they happen, so a client that restarts misses nothing. The account is the strategy.
+
+`DropCopySink` sits between the order manager and the gateway. It passes every report on unchanged and journals each fill;
+`DropCopyServer` serves the journal from its own thread (Boost.Asio), so the order-handling thread never waits on a drop-copy
+client. Without the argument, nothing changes. PosTrack's
+[minioems-drop-copy.md](https://github.com/tapishikaur/postrack/blob/main/results/minioems-drop-copy.md) is the end-to-end
+check: 20,000 orders over FIX, 20,000 fills received by PosTrack, positions reconciled with 0 breaks.
 
 ## Benchmarks
 

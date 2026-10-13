@@ -53,9 +53,19 @@ add_library(oems_gateway src/fix_gateway.cpp src/fix_settings.cpp)
 target_link_libraries(oems_gateway PUBLIC oems_core quickfix PRIVATE oems_options)
 target_compile_definitions(oems_gateway PRIVATE MINI_OEMS_FIX44_XML="${MINI_OEMS_FIX44_XML}")
 
+# The drop copy: every fill served over TCP in PosTrack's protocol (Boost.Asio, its own thread).
+# MSYS2: mingw-w64-x86_64-boost; Ubuntu: libboost-dev. Only the header-only Asio part is used.
+find_package(Boost 1.74 CONFIG REQUIRED)
+add_library(oems_dropcopy src/drop_copy.cpp)
+target_link_libraries(oems_dropcopy PUBLIC oems_core Boost::headers PRIVATE oems_options)
+if(WIN32)
+  target_link_libraries(oems_dropcopy PUBLIC ws2_32 mswsock)
+  target_compile_definitions(oems_dropcopy PUBLIC _WIN32_WINNT=0x0A00) # Windows 10+ for Asio
+endif()
+
 # The gateway executable.
 add_executable(mini_oems src/main.cpp)
-target_link_libraries(mini_oems PRIVATE oems_gateway oems_options)
+target_link_libraries(mini_oems PRIVATE oems_gateway oems_dropcopy oems_options)
 
 if(MINI_OEMS_BUILD_TESTS)
   enable_testing()

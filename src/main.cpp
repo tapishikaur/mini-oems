@@ -1,6 +1,9 @@
 // mini_oems: the order gateway.
 //
-//   mini_oems <session config> <instruments.csv> <accounts.csv>
+//   mini_oems <session config> <instruments.csv> <accounts.csv> [drop copy port]
+//
+// With a drop copy port, every fill is also served on 127.0.0.1:<port> in PosTrack's
+// protocol (see oems/drop_copy.hpp), for a position service such as PosTrack.
 //
 // The session config is a QuickFIX settings file (see oems/fix_settings.hpp for
 // ${FIX44_XML}). With FileStorePath set, sequence numbers and sent messages are
@@ -9,6 +12,7 @@
 // include/oems/config.hpp.
 
 #include "oems/config.hpp"
+#include "oems/drop_copy.hpp"
 #include "oems/fix_gateway.hpp"
 #include "oems/fix_settings.hpp"
 #include "oems/in_process_venue.hpp"
@@ -44,8 +48,8 @@ std::ifstream open(const char* path) {
 } // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 4) {
-    std::cerr << "usage: mini_oems <session config> <instruments.csv> <accounts.csv>\n";
+  if (argc != 4 && argc != 5) {
+    std::cerr << "usage: mini_oems <session config> <instruments.csv> <accounts.csv> [drop copy port]\n";
     return 2;
   }
   try {
@@ -59,7 +63,18 @@ int main(int argc, char** argv) {
     oems::OrderManager manager(risk);
     oems::InProcessVenue venue(manager);
     oems::FixGateway gateway(manager, instruments.symbols, accounts.accounts);
-    manager.connect(venue, gateway);
+
+    // Optional drop copy: reports pass through DropCopySink to the gateway unchanged; fills
+    // are also journaled and served to position services.
+    oems::DropCopyJournal journal;
+    oems::DropCopySink dropCopySink(gateway, journal, instruments.symbols, accounts.accounts);
+    std::unique_ptr<oems::DropCopyServer> dropCopy;
+    if (argc == 5) {
+      dropCopy = std::make_unique<oems::DropCopyServer>(journal, static_cast<std::uint16_t>(std::stoul(argv[4])));
+      manager.connect(venue, dropCopySink);
+    } else {
+      manager.connect(venue, gateway);
+    }
 
     const FIX::SessionSettings settings = oems::loadSessionSettings(argv[1]);
     const FIX::Dictionary& defaults = settings.get();
@@ -82,6 +97,7 @@ int main(int argc, char** argv) {
     acceptor->start();
     std::cout << "mini_oems: listening with " << instruments.symbols.size() << " symbols and "
               << accounts.accounts.size() << " accounts" << (log ? ", logging messages" : "")
+              << (dropCopy ? ", drop copy on 127.0.0.1:" + std::to_string(dropCopy->port()) : std::string())
               << ". Ctrl+C to stop." << std::endl;
     while (!stopRequested) std::this_thread::sleep_for(std::chrono::milliseconds(200));
     acceptor->stop();

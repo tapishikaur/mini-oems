@@ -14,8 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Install Ninja and Boost (Asio, for the drop copy)
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libboost-dev
 
       # QuickFIX takes a few minutes to build; rebuild only when its pin or patch changes.
       - name: Cache QuickFIX
